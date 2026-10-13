@@ -1,0 +1,148 @@
+name: Android Build (APK + AAB)
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: "Tip build: ambele, doar APK, sau doar AAB"
+        required: true
+        default: "ambele"
+        type: choice
+        options:
+          - ambele
+          - apk
+          - aab
+
+env:
+  APP_NAME: Dating Bird Pro
+  PACKAGE_ID: com.datingbirdpro.app
+
+jobs:
+  build:
+    name: Compilează APK + AAB
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Descarcă codul proiectului
+        uses: actions/checkout@v4
+
+      - name: Instalează Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Instalează Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 35
+          build-tools-version: 35.0.0
+          ndk-version: 27.1.12297006
+
+      - name: Installează dependențele npm
+        run: npm ci
+
+      - name: Installează EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Pregătește variabile de mediu
+        run: |
+          echo "EXPO_PUBLIC_SUPABASE_URL=${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}" >> $GITHUB_ENV
+          echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}" >> $GITHUB_ENV
+
+      - name: Setup Expo
+        run: |
+          npx expo whoami 2>/dev/null || true
+
+      - name: Prebuild Android nativ
+        run: npx expo prebuild --platform android --clean
+
+      - name: Build APK (Release)
+        if: ${{ github.event.inputs.build_type != 'aab' }}
+        working-directory: android
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.useAndroidX=true \
+            -Pandroid.enableJetifier=true \
+            --no-daemon \
+            -x lint
+        env:
+          NODE_OPTIONS: --max_old_space_size=4096
+
+      - name: Build AAB (Release Bundle)
+        if: ${{ github.event.inputs.build_type != 'apk' }}
+        working-directory: android
+        run: |
+          ./gradlew bundleRelease \
+            -Pandroid.useAndroidX=true \
+            -Pandroid.enableJetifier=true \
+            --no-daemon \
+            -x lint
+        env:
+          NODE_OPTIONS: --max_old_space_size=4096
+
+      - name: Copiază fișierele build într-un folder
+        run: |
+          mkdir -p output
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk "output/DatingBirdPro-v1.0.0.apk"
+            echo "APK găsit și copiat"
+          else
+            echo "APK nu a fost construit (selecție: ${{ github.event.inputs.build_type }})"
+          fi
+          if [ -f android/app/build/outputs/bundle/release/app-release.aab ]; then
+            cp android/app/build/outputs/bundle/release/app-release.aab "output/DatingBirdPro-v1.0.0.aab"
+            echo "AAB găsit și copiat"
+          else
+            echo "AAB nu a fost construit (selecție: ${{ github.event.inputs.build_type }})"
+          fi
+          ls -lh output/
+
+      - name: Încarcă APK (descărcare directă)
+        if: ${{ github.event.inputs.build_type != 'aab' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: DatingBirdPro-APK
+          path: output/*.apk
+          retention-days: 30
+
+      - name: Încarcă AAB (descărcare directă)
+        if: ${{ github.event.inputs.build_type != 'apk' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: DatingBirdPro-AAB
+          path: output/*.aab
+          retention-days: 30
+
+      - name: Sumar build
+        if: always()
+        run: |
+          echo "========================================"
+          echo "  BUILD SUMMARY - Dating Bird Pro"
+          echo "========================================"
+          echo "Package ID: ${{ env.PACKAGE_ID }}"
+          echo "Build type: ${{ github.event.inputs.build_type }}"
+          echo ""
+          if ls output/*.apk 1>/dev/null 2>&1; then
+            echo "APK: ✓ Generat cu succes"
+            ls -lh output/*.apk
+          else
+            echo "APK: nu a fost construit"
+          fi
+          if ls output/*.aab 1>/dev/null 2>&1; then
+            echo "AAB: ✓ Generat cu succes"
+            ls -lh output/*.aab
+          else
+            echo "AAB: nu a fost construit"
+          fi
+          echo ""
+          echo "Fișierele sunt disponibile în secțiunea Artifacts de mai jos."
+          echo "Apasă pe numele artifact-ului pentru a descărca fișierul."
+          echo "========================================"
