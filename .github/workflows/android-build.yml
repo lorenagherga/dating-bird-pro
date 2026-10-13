@@ -30,17 +30,18 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platforms;android-35
-            build-tools;35.0.0
+      - name: Install Android SDK components
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-35" "build-tools;35.0.0" || true
+          echo "=== Installed platforms ==="
+          ls $ANDROID_HOME/platforms/ 2>/dev/null || echo "No platforms"
+          echo "=== Installed build-tools ==="
+          ls $ANDROID_HOME/build-tools/ 2>/dev/null || echo "No build-tools"
 
       - name: Install npm dependencies
-        run: |
-          npm ci 2>&1
-          echo "npm ci exit: $?"
+        run: npm ci
 
       - name: Run expo prebuild
         id: prebuild
@@ -54,8 +55,6 @@ jobs:
         run: |
           echo "=== android/ exists? ==="
           ls -la android/ 2>/dev/null || echo "NO android/ dir"
-          echo "=== android/app/ ==="
-          ls -la android/app/ 2>/dev/null || echo "NO android/app/ dir"
           echo "=== gradle wrapper ==="
           cat android/gradle/wrapper/gradle-wrapper.properties 2>/dev/null || echo "NO wrapper"
 
