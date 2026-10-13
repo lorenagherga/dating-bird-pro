@@ -1,0 +1,2 @@
+[functions.pigeon-web-search]
+verify_jwt = true
