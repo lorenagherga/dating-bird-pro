@@ -1,4 +1,4 @@
-name: Android Build (APK + AAB)
+name: Android Build (EAS Local)
 
 on:
   workflow_dispatch:
@@ -29,16 +29,14 @@ jobs:
       - name: Install Dependencies
         run: npm ci
 
-      - name: Build Web for Expo Export
-        run: npx expo export --platform android
-        env:
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      - name: Install EAS CLI Globally
+        run: npm install -g eas-cli
+
+      - name: Generate Android Native Folder
+        run: npx expo prebuild --platform android --clean
 
       - name: Build Android App with EAS Local
-        run: |
-          npm install -g eas-cli
-          npx eas build --platform android --local --non-interactive --profile preview
+        run: npx eas build --platform android --local --non-interactive --profile preview
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
