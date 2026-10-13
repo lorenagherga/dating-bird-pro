@@ -28,11 +28,11 @@ jobs:
       - name: Generate Android Native Project
         run: npx expo prebuild --platform android --clean
 
-      - name: Build APK with Gradle (Ignore Animation Warnings)
+      - name: Build APK with Gradle
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug -x lint -x lintVitalRelease
+          ./gradlew assembleDebug
         env:
           EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
           EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
