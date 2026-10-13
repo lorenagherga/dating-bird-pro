@@ -1,44 +1,117 @@
-name: Android Build (Direct Gradle)
+name: Android Build (APK)
 
 on:
   workflow_dispatch:
 
+env:
+  EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
+  EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+
 jobs:
   build:
+    name: Build APK
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
-      - name: Set up repository
-        uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v5
 
-      - name: Install Node.js 20
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-
-      - name: Install Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'temurin'
-          java-version: '17'
-
-      - name: Install Dependencies
-        run: npm install --legacy-peer-deps
-
-      - name: Generate Android Native Project (Clear Cache)
-        run: npx expo prebuild --platform android --clean
-
-      - name: Build APK with Gradle
+      - name: Verify critical files
         run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-build-cache --clear-cache
-        env:
-          EXPO_PUBLIC_SUPABASE_URL: ${{ secrets.EXPO_PUBLIC_SUPABASE_URL }}
-          EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+          echo "=== Checking required files ==="
+          for f in package.json app.json babel.config.js expo-env.d.ts tsconfig.json android/build.gradle android/settings.gradle android/app/build.gradle android/gradlew; do
+            if [ ! -f "$f" ]; then
+              echo "MISSING: $f"
+              exit 1
+            else
+              echo "OK: $f"
+            fi
+          done
 
-      - name: Upload APK Artifact
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: |
+            platforms;android-35
+            build-tools;35.0.0
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Verify android gradlew
+        run: |
+          chmod +x android/gradlew
+          echo "Gradle wrapper properties:"
+          cat android/gradle/wrapper/gradle-wrapper.properties
+
+      - name: Build APK (Release)
+        working-directory: android
+        run: |
+          echo "=== Starting Gradle build ==="
+          echo "Java: $(java -version 2>&1)"
+          echo "Node: $(node --version)"
+          echo "ANDROID_HOME: $ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT: $ANDROID_SDK_ROOT"
+          ./gradlew assembleRelease --no-daemon -x lint --stacktrace 2>&1
+          echo "=== Gradle exit code: $? ==="
+        env:
+          NODE_OPTIONS: --max_old_space_size=4096
+
+      - name: Copy APK to output
+        if: success()
+        run: |
+          mkdir -p output
+          if [ -f android/app/build/outputs/apk/release/app-release.apk ]; then
+            cp android/app/build/outputs/apk/release/app-release.apk output/DatingBirdPro-v1.0.0.apk
+            echo "APK copied successfully"
+          else
+            echo "APK not found at expected path"
+            echo "Searching for any APK..."
+            find . -name "*.apk" 2>/dev/null
+            exit 1
+          fi
+          ls -lh output/
+
+      - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Dating-Bird-Pro-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: DatingBirdPro-APK
+          path: output/*.apk
+          retention-days: 30
+
+      - name: Debug on failure
+        if: failure()
+        run: |
+          echo "=== BUILD FAILED ==="
+          echo "--- Node ---"
+          node --version 2>&1
+          echo "--- npm ---"
+          npm --version 2>&1
+          echo "--- Java ---"
+          java -version 2>&1
+          echo "--- Android SDK location ---"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          ls -la $ANDROID_HOME/platforms/ 2>/dev/null || echo "No platforms"
+          ls -la $ANDROID_HOME/build-tools/ 2>/dev/null || echo "No build-tools"
+          echo "--- android/ contents ---"
+          ls -la android/ 2>/dev/null || echo "No android dir"
+          echo "--- gradle wrapper ---"
+          cat android/gradle/wrapper/gradle-wrapper.properties 2>/dev/null || echo "No wrapper props"
+          echo "--- node_modules check ---"
+          ls node_modules/ | head -5 2>/dev/null || echo "No node_modules"
+          echo "--- Check if expo prebuild needed ---"
+          ls android/app/src/main/java/ -R 2>/dev/null || echo "No java sources"
