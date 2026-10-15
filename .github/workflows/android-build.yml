@@ -81,7 +81,7 @@ jobs:
         if: success()
         run: |
           mkdir -p output
-          cp android/app/build/outputs/apk/release/app-release.apk output/DatingBirdPro-v1.0.0.apk
+          cp android/app/build/outputs/apk/release/app-release.apk output/DatingBirdPro-v1.0.1.apk
           ls -lh output/
 
       - name: Upload APK artifact
