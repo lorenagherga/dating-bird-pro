@@ -6,12 +6,14 @@ import { useState, useEffect } from 'react';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { supabase } from '@/lib/supabase';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Platform } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const { pigeonType, isAdmin } = useAuth();
   const { t } = useLanguage();
   const [unreadTickets, setUnreadTickets] = useState(0);
+  const insets = useSafeAreaInsets();
 
   const showRacingTab = pigeonType === 'racing' || pigeonType === 'both';
 
@@ -39,40 +41,41 @@ export default function TabLayout() {
           backgroundColor: Colors.white,
           borderTopColor: Colors.borderLight,
           borderTopWidth: 1,
-          paddingBottom: 6,
-          paddingTop: 6,
-          height: 64,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+          paddingTop: 8,
+          height: 64 + (insets.bottom > 0 ? insets.bottom : 8),
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter-Medium',
-          fontSize: 10.5,
-          marginTop: 3,
+          fontSize: 11,
+          marginTop: 4,
           letterSpacing: 0.2,
         },
         tabBarIconStyle: {
           marginTop: 2,
         },
+        tabBarAllowFontScaling: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: t('tabHome'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Home color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Home color={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="pigeons"
         options={{
           title: t('tabRegistry'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Bird color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Bird color={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="nests"
         options={{
           title: t('tabNests'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Calendar color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Calendar color={color} size={26} />,
         }}
       />
       <Tabs.Screen
@@ -80,42 +83,42 @@ export default function TabLayout() {
         options={{
           title: t('tabRaces'),
           href: showRacingTab ? undefined : null,
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Trophy color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Trophy color={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="treatments"
         options={{
           title: t('tabTreatments'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Stethoscope color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Stethoscope color={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="vitrina"
         options={{
           title: t('tabVitrina'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Award color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Award color={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="calculator"
         options={{
           title: t('tabGenetic'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Calculator color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Calculator color={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="assistant"
         options={{
           title: t('tabAssistant'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <MessageCircle color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <MessageCircle color={color} size={26} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: t('tabProfile'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <User color={color} size={size} />,
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <User color={color} size={26} />,
         }}
       />
       <Tabs.Screen
@@ -125,7 +128,7 @@ export default function TabLayout() {
           href: isAdmin ? undefined : null,
           tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => (
             <View>
-              <Shield color={color} size={size} />
+              <Shield color={color} size={26} />
               {unreadTickets > 0 && (
                 <View style={tabStyles.badge}>
                   <Text style={tabStyles.badgeText}>

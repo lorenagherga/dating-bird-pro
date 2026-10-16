@@ -2,7 +2,7 @@
   "expo": {
     "name": "Dating Bird Pro",
     "slug": "dating-bird-pro",
-    "version": "1.0.0",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "datingbirdpro",
@@ -14,7 +14,7 @@
     },
     "android": {
       "package": "com.datingbirdpro.app",
-      "versionCode": 1,
+      "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
         "backgroundColor": "#0F2A6B"
