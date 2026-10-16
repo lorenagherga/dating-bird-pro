@@ -422,14 +422,15 @@ export const LANGUAGE_LIST: { code: Language; label: string; flag: string }[] = 
 const LANG_CODES = LANGUAGE_LIST.map(l => l.code);
 
 export function detectSystemLanguage(): Language {
-  if (typeof navigator !== 'undefined' && navigator.language) {
-    const lang = navigator.language.toLowerCase();
-    const code = lang.split('-')[0];
-    if (LANG_CODES.includes(code as Language)) return code as Language;
-    if (lang.startsWith('ro')) return 'ro';
-    return 'en';
-  }
-  return 'en';
+  try {
+    if (typeof navigator !== 'undefined' && navigator.language) {
+      const lang = navigator.language.toLowerCase();
+      const code = lang.split('-')[0];
+      if (LANG_CODES.includes(code as Language)) return code as Language;
+      if (lang.startsWith('ro')) return 'ro';
+    }
+  } catch {}
+  return 'ro';
 }
 
 export function isValidLanguage(lang: string): lang is Language {
