@@ -9,7 +9,6 @@ import {
   Calendar,
   Stethoscope,
   Calculator,
-  MessageCircle,
   GitBranch,
   Crown,
   LogOut,
@@ -82,11 +81,10 @@ export default function DashboardScreen() {
       route: '/(tabs)/nests',
     },
     {
-      title: t('modTreatments'),
-      subtitle: t('modTreatmentsSub'),
+      title: t('doctorTitle'),
+      subtitle: t('doctorSub'),
       icon: <Stethoscope color={Colors.white} size={26} strokeWidth={1.8} />,
-      route: '/(tabs)/treatments',
-      locked: !limits.hasTreatments,
+      route: '/(tabs)/doctor',
     },
     {
       title: t('modCalculator'),
@@ -141,19 +139,19 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        <TouchableOpacity
-          style={styles.assistantHero}
-          onPress={() => router.push('/(tabs)/assistant')}
-          activeOpacity={0.9}
-        >
-          <View style={styles.assistantHeroIcon}>
-            <Sparkles color={Colors.white} size={28} strokeWidth={1.8} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.assistantHeroTitle}>{t('modAssistant')}</Text>
-            <Text style={styles.assistantHeroSub}>{t('assistantFreeSub')}</Text>
-          </View>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.assistantHero}
+            onPress={() => router.push('/(tabs)/assistant')}
+            activeOpacity={0.9}
+          >
+            <View style={styles.assistantHeroIcon}>
+              <Sparkles color={Colors.white} size={28} strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.assistantHeroTitle}>{t('modAssistant')}</Text>
+              <Text style={styles.assistantHeroSub}>{t('modAssistantSub')}</Text>
+            </View>
+          </TouchableOpacity>
 
         <View style={styles.modulesGrid}>
           {modules.map((mod, idx) => (

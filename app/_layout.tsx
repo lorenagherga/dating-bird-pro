@@ -1,5 +1,6 @@
 import 'react-native-gesture-handler';
 import { useEffect } from 'react';
+import { View } from 'react-native';
 import { Stack, SplashScreen } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -7,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider } from '@/lib/auth-context';
 import { LanguageProvider } from '@/lib/language-context';
+import { LanguagePicker } from '@/components/LanguagePicker';
 import { useFonts } from 'expo-font';
 import {
   Inter_400Regular,
@@ -50,6 +52,9 @@ export default function RootLayout() {
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="+not-found" />
             </Stack>
+            <View style={{ position: 'absolute', top: 50, right: 16, zIndex: 999 }}>
+              <LanguagePicker />
+            </View>
             <StatusBar style="auto" />
           </LanguageProvider>
         </AuthProvider>

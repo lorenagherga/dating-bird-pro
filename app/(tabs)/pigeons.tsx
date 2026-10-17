@@ -25,13 +25,15 @@ import { useRouter } from 'expo-router';
 
 interface PigeonRecord {
   id: string;
-  ring_series: string;
+  ring_series: string | null;
   year: number | null;
   sex: string;
   color: string;
   status: string;
   sire_id: string | null;
   dam_id: string | null;
+  sire_external_color: string | null;
+  dam_external_color: string | null;
   photo_url: string | null;
   notes: string;
   game_style: GameStyle | null;
@@ -54,10 +56,14 @@ export default function PigeonsScreen() {
     status: 'În crescătorie',
     sire_id: '',
     dam_id: '',
+    sire_external_color: '',
+    dam_external_color: '',
     notes: '',
     game_style: '' as string,
     is_champion: false,
   });
+  const [sireMode, setSireMode] = useState<'registry' | 'external'>('registry');
+  const [damMode, setDamMode] = useState<'registry' | 'external'>('registry');
   const [gameStyleDropdown, setGameStyleDropdown] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -114,10 +120,14 @@ export default function PigeonsScreen() {
       status: 'În crescătorie',
       sire_id: '',
       dam_id: '',
+      sire_external_color: '',
+      dam_external_color: '',
       notes: '',
       game_style: '',
       is_champion: false,
     });
+    setSireMode('registry');
+    setDamMode('registry');
     setGameStyleDropdown(false);
     setPhotoUri(null);
     setModalVisible(true);
@@ -126,17 +136,21 @@ export default function PigeonsScreen() {
   const openEditModal = (pigeon: PigeonRecord) => {
     setEditingPigeon(pigeon);
     setForm({
-      ring_series: pigeon.ring_series,
+      ring_series: pigeon.ring_series || '',
       year: pigeon.year ? String(pigeon.year) : '',
       sex: pigeon.sex,
       color: pigeon.color,
       status: pigeon.status,
       sire_id: pigeon.sire_id || '',
       dam_id: pigeon.dam_id || '',
+      sire_external_color: pigeon.sire_external_color || '',
+      dam_external_color: pigeon.dam_external_color || '',
       notes: pigeon.notes,
       game_style: pigeon.game_style || '',
       is_champion: pigeon.is_champion || false,
     });
+    setSireMode(pigeon.sire_external_color ? 'external' : 'registry');
+    setDamMode(pigeon.dam_external_color ? 'external' : 'registry');
     setGameStyleDropdown(false);
     setPhotoUri(pigeon.photo_url);
     setModalVisible(true);
@@ -180,14 +194,17 @@ export default function PigeonsScreen() {
     try {
       const userId = profile?.id;
       if (!userId) return null;
-      const fileExt = uri.split('.').pop() || 'jpg';
+      const fileExt = uri.split('.').pop()?.split('?')[0] || 'jpg';
       const fileName = `${userId}/${Date.now()}.${fileExt}`;
       const filePath = `${fileName}`;
 
+      const response = await fetch(uri);
+      const blob = await response.blob();
+
       const { error: uploadError } = await supabase.storage
         .from('pigeon-photos')
-        .upload(filePath, { uri } as any, {
-          contentType: `image/${fileExt}`,
+        .upload(filePath, blob, {
+          contentType: blob.type || `image/${fileExt}`,
           upsert: false,
         });
 
@@ -204,8 +221,8 @@ export default function PigeonsScreen() {
   };
 
   const handleSave = async () => {
-    if (!form.ring_series.trim()) {
-      Alert.alert(t('error'), t('ringRequired'));
+    if (!form.ring_series.trim() && !photoUri && !editingPigeon?.photo_url) {
+      Alert.alert(t('error'), t('photoRequired'));
       return;
     }
     setSaving(true);
@@ -217,13 +234,15 @@ export default function PigeonsScreen() {
     }
 
     const payload = {
-      ring_series: form.ring_series.trim(),
+      ring_series: form.ring_series.trim() || null,
       year: form.year ? parseInt(form.year) : null,
       sex: form.sex,
       color: form.color.trim(),
       status: form.status,
-      sire_id: form.sire_id || null,
-      dam_id: form.dam_id || null,
+      sire_id: sireMode === 'registry' ? (form.sire_id || null) : null,
+      dam_id: damMode === 'registry' ? (form.dam_id || null) : null,
+      sire_external_color: sireMode === 'external' ? form.sire_external_color.trim() || null : null,
+      dam_external_color: damMode === 'external' ? form.dam_external_color.trim() || null : null,
       photo_url: photoUrl,
       notes: form.notes.trim(),
       game_style: form.game_style || null,
@@ -269,7 +288,7 @@ export default function PigeonsScreen() {
         )}
       </View>
       <View style={styles.pigeonInfo}>
-        <Text style={styles.pigeonRing}>{item.ring_series}</Text>
+        <Text style={styles.pigeonRing}>{item.ring_series || '(fără inel)'}</Text>
         <Text style={styles.pigeonDetails}>
           {item.year || '—'} · {item.sex === 'Mascul' ? t('male') : t('female')} · {item.color || t('noColor')}
         </Text>
@@ -364,7 +383,7 @@ export default function PigeonsScreen() {
             </View>
 
             <View style={styles.formGroup}>
-              <Text style={styles.formLabel}>{t('ringNumber')}</Text>
+              <Text style={styles.formLabel}>{t('ringOptional')}</Text>
               <TextInput
                 style={styles.formInput}
                 value={form.ring_series}
@@ -372,6 +391,7 @@ export default function PigeonsScreen() {
                 placeholder="ex: RO-2024-12345"
                 placeholderTextColor={Colors.textLight}
               />
+              <Text style={styles.optionalHint}>{t('ringOptionalHint')}</Text>
             </View>
 
             <View style={styles.formRow}>
@@ -481,60 +501,114 @@ export default function PigeonsScreen() {
 
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>{t('sire')}</Text>
-              <View style={styles.pickerWrapper}>
-                {pigeons.filter(p => p.sex === 'Mascul').length === 0 ? (
-                  <Text style={styles.pickerEmpty}>{t('noMale')}</Text>
-                ) : (
-                  <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
-                    <TouchableOpacity
-                      style={[styles.pickerItem, !form.sire_id && styles.pickerItemActive]}
-                      onPress={() => setForm({ ...form, sire_id: '' })}
-                    >
-                      <Text style={[styles.pickerItemText, !form.sire_id && styles.pickerItemTextActive]}>{t('noFather')}</Text>
-                    </TouchableOpacity>
-                    {pigeons.filter(p => p.sex === 'Mascul').map((p) => (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[styles.pickerItem, form.sire_id === p.id && styles.pickerItemActive]}
-                        onPress={() => setForm({ ...form, sire_id: p.id })}
-                      >
-                        <Text style={[styles.pickerItemText, form.sire_id === p.id && styles.pickerItemTextActive]}>
-                          {p.ring_series} {p.color ? `· ${p.color}` : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
+              <View style={styles.parentModeRow}>
+                <TouchableOpacity
+                  style={[styles.parentModeBtn, sireMode === 'registry' && styles.parentModeBtnActive]}
+                  onPress={() => setSireMode('registry')}
+                >
+                  <Text style={[styles.parentModeBtnText, sireMode === 'registry' && styles.parentModeBtnTextActive]}>{t('selectFromRegistry')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.parentModeBtn, sireMode === 'external' && styles.parentModeBtnActive]}
+                  onPress={() => setSireMode('external')}
+                >
+                  <Text style={[styles.parentModeBtnText, sireMode === 'external' && styles.parentModeBtnTextActive]}>{t('externalParent')}</Text>
+                </TouchableOpacity>
               </View>
+              {sireMode === 'registry' ? (
+                <View style={styles.pickerWrapper}>
+                  {pigeons.filter(p => p.sex === 'Mascul').length === 0 ? (
+                    <Text style={styles.pickerEmpty}>{t('noMale')}</Text>
+                  ) : (
+                    <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
+                      <TouchableOpacity
+                        style={[styles.pickerItem, !form.sire_id && styles.pickerItemActive]}
+                        onPress={() => setForm({ ...form, sire_id: '' })}
+                      >
+                        <Text style={[styles.pickerItemText, !form.sire_id && styles.pickerItemTextActive]}>{t('noFather')}</Text>
+                      </TouchableOpacity>
+                      {pigeons.filter(p => p.sex === 'Mascul').map((p) => (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={[styles.pickerItem, form.sire_id === p.id && styles.pickerItemActive]}
+                          onPress={() => setForm({ ...form, sire_id: p.id })}
+                        >
+                          <Text style={[styles.pickerItemText, form.sire_id === p.id && styles.pickerItemTextActive]}>
+                            {p.ring_series || '(fără inel)'} {p.color ? `· ${p.color}` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              ) : (
+                <View>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form.sire_external_color}
+                    onChangeText={(v) => setForm({ ...form, sire_external_color: v })}
+                    placeholder={t('externalColorPlaceholder')}
+                    placeholderTextColor={Colors.textLight}
+                  />
+                  <Text style={styles.optionalHint}>{t('externalParentHint')}</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.formGroup}>
               <Text style={styles.formLabel}>{t('dam')}</Text>
-              <View style={styles.pickerWrapper}>
-                {pigeons.filter(p => p.sex === 'Femelă').length === 0 ? (
-                  <Text style={styles.pickerEmpty}>{t('noFemale')}</Text>
-                ) : (
-                  <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
-                    <TouchableOpacity
-                      style={[styles.pickerItem, !form.dam_id && styles.pickerItemActive]}
-                      onPress={() => setForm({ ...form, dam_id: '' })}
-                    >
-                      <Text style={[styles.pickerItemText, !form.dam_id && styles.pickerItemTextActive]}>{t('noMother')}</Text>
-                    </TouchableOpacity>
-                    {pigeons.filter(p => p.sex === 'Femelă').map((p) => (
-                      <TouchableOpacity
-                        key={p.id}
-                        style={[styles.pickerItem, form.dam_id === p.id && styles.pickerItemActive]}
-                        onPress={() => setForm({ ...form, dam_id: p.id })}
-                      >
-                        <Text style={[styles.pickerItemText, form.dam_id === p.id && styles.pickerItemTextActive]}>
-                          {p.ring_series} {p.color ? `· ${p.color}` : ''}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                )}
+              <View style={styles.parentModeRow}>
+                <TouchableOpacity
+                  style={[styles.parentModeBtn, damMode === 'registry' && styles.parentModeBtnActive]}
+                  onPress={() => setDamMode('registry')}
+                >
+                  <Text style={[styles.parentModeBtnText, damMode === 'registry' && styles.parentModeBtnTextActive]}>{t('selectFromRegistry')}</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.parentModeBtn, damMode === 'external' && styles.parentModeBtnActive]}
+                  onPress={() => setDamMode('external')}
+                >
+                  <Text style={[styles.parentModeBtnText, damMode === 'external' && styles.parentModeBtnTextActive]}>{t('externalParent')}</Text>
+                </TouchableOpacity>
               </View>
+              {damMode === 'registry' ? (
+                <View style={styles.pickerWrapper}>
+                  {pigeons.filter(p => p.sex === 'Femelă').length === 0 ? (
+                    <Text style={styles.pickerEmpty}>{t('noFemale')}</Text>
+                  ) : (
+                    <ScrollView style={styles.pickerScroll} nestedScrollEnabled>
+                      <TouchableOpacity
+                        style={[styles.pickerItem, !form.dam_id && styles.pickerItemActive]}
+                        onPress={() => setForm({ ...form, dam_id: '' })}
+                      >
+                        <Text style={[styles.pickerItemText, !form.dam_id && styles.pickerItemTextActive]}>{t('noMother')}</Text>
+                      </TouchableOpacity>
+                      {pigeons.filter(p => p.sex === 'Femelă').map((p) => (
+                        <TouchableOpacity
+                          key={p.id}
+                          style={[styles.pickerItem, form.dam_id === p.id && styles.pickerItemActive]}
+                          onPress={() => setForm({ ...form, dam_id: p.id })}
+                        >
+                          <Text style={[styles.pickerItemText, form.dam_id === p.id && styles.pickerItemTextActive]}>
+                            {p.ring_series || '(fără inel)'} {p.color ? `· ${p.color}` : ''}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </ScrollView>
+                  )}
+                </View>
+              ) : (
+                <View>
+                  <TextInput
+                    style={styles.formInput}
+                    value={form.dam_external_color}
+                    onChangeText={(v) => setForm({ ...form, dam_external_color: v })}
+                    placeholder={t('externalColorPlaceholder')}
+                    placeholderTextColor={Colors.textLight}
+                  />
+                  <Text style={styles.optionalHint}>{t('externalParentHint')}</Text>
+                </View>
+              )}
             </View>
 
             <View style={styles.formGroup}>
@@ -793,6 +867,38 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     color: Colors.goldDark,
+  },
+  optionalHint: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: Colors.textLight,
+    marginTop: 4,
+  },
+  parentModeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 8,
+  },
+  parentModeBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: Colors.neutral50,
+    borderWidth: 1.5,
+    borderColor: Colors.borderLight,
+    alignItems: 'center',
+  },
+  parentModeBtnActive: {
+    backgroundColor: Colors.royalBlue,
+    borderColor: Colors.royalBlue,
+  },
+  parentModeBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  parentModeBtnTextActive: {
+    color: Colors.white,
   },
   iconBtnGold: {
     width: 36,

@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Alert,
   SafeAreaView,
+  Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
@@ -119,7 +120,7 @@ export default function PedigreeScreen() {
   useEffect(() => {
     if (pigeon) {
       setAncestryLoading(true);
-      buildAncestry(pigeon, 4).then((tree) => {
+      buildAncestry(pigeon, 10).then((tree) => {
         setAncestry(tree);
         loadAllPalmares(tree).finally(() => setAncestryLoading(false));
       });
@@ -178,6 +179,11 @@ export default function PedigreeScreen() {
     const hasPodium = palmares.some((p) => p.position <= 3);
     const showTrophy = isChampion || hasPodium;
 
+    const GEN_LABELS: Record<number, string> = {
+      1: t('gen1'), 2: t('gen2'), 3: t('gen3'),
+      4: 'Gen 4', 5: 'Gen 5', 6: 'Gen 6', 7: 'Gen 7', 8: 'Gen 8', 9: 'Gen 9', 10: 'Gen 10',
+    };
+
     return (
       <View style={{ gap: 3 }}>
         <View style={[styles.treeNode, { marginLeft: gen * 8 }]}>
@@ -194,22 +200,33 @@ export default function PedigreeScreen() {
                 />
               </View>
             )}
-            <View style={styles.nodeHeader}>
-              <Text
-                style={[styles.nodeRing, gen === 0 && styles.rootRing]}
-                numberOfLines={1}
-              >
-                {node.ring_series}
-              </Text>
-              {node.sex && (
-                <View style={[styles.sexBadge, node.sex === 'Mascul' ? styles.sexMale : styles.sexFemale]}>
-                  <Text style={styles.sexText}>{node.sex === 'Mascul' ? 'M' : 'F'}</Text>
+            <View style={styles.nodeContentRow}>
+              {node.photo_url ? (
+                <Image source={{ uri: node.photo_url }} style={styles.nodePhoto} resizeMode="cover" />
+              ) : (
+                <View style={styles.nodePhotoPlaceholder}>
+                  <Bird color={gen === 0 ? 'rgba(255,255,255,0.6)' : Colors.textLight} size={16} />
                 </View>
               )}
+              <View style={{ flex: 1 }}>
+                <View style={styles.nodeHeader}>
+                  <Text
+                    style={[styles.nodeRing, gen === 0 && styles.rootRing]}
+                    numberOfLines={1}
+                  >
+                    {node.ring_series}
+                  </Text>
+                  {node.sex && (
+                    <View style={[styles.sexBadge, node.sex === 'Mascul' ? styles.sexMale : styles.sexFemale]}>
+                      <Text style={styles.sexText}>{node.sex === 'Mascul' ? 'M' : 'F'}</Text>
+                    </View>
+                  )}
+                </View>
+                <Text style={[styles.nodeDetails, gen === 0 && styles.rootDetails]}>
+                  {node.year || '—'} · {node.color || t('noColor')}
+                </Text>
+              </View>
             </View>
-            <Text style={[styles.nodeDetails, gen === 0 && styles.rootDetails]}>
-              {node.year || '—'} · {node.color || t('noColor')}
-            </Text>
             {palmares.length > 0 && (
               <View style={styles.palmaresMini}>
                 {palmares.slice(0, 3).map((p) => (
@@ -229,9 +246,7 @@ export default function PedigreeScreen() {
               </View>
             )}
             {gen === 0 && <Text style={styles.rootLabel}>{t('subject')}</Text>}
-            {gen === 1 && <Text style={styles.genLabel}>{t('gen1')}</Text>}
-            {gen === 2 && <Text style={styles.genLabel}>{t('gen2')}</Text>}
-            {gen === 3 && <Text style={styles.genLabel}>{t('gen3')}</Text>}
+            {gen >= 1 && gen <= 10 && <Text style={styles.genLabel}>{GEN_LABELS[gen]}</Text>}
           </View>
         </View>
         <View style={{ gap: 3 }}>
@@ -434,6 +449,9 @@ const styles = StyleSheet.create({
     top: 6,
     right: 6,
   },
+  nodeContentRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  nodePhoto: { width: 36, height: 36, borderRadius: 8, borderWidth: 1, borderColor: Colors.borderLight },
+  nodePhotoPlaceholder: { width: 36, height: 36, borderRadius: 8, backgroundColor: Colors.neutral100, justifyContent: 'center', alignItems: 'center' },
   nodeHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingRight: 20 },
   nodeRing: { fontFamily: 'Inter-SemiBold', fontSize: 12, color: Colors.text, flex: 1 },
   rootRing: { color: Colors.white, fontSize: 14 },

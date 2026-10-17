@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Bird, Calendar, Stethoscope, Calculator, MessageCircle, User, Trophy, Award, Shield } from 'lucide-react-native';
+import { Home, Bird, Calendar, Stethoscope, Calculator, User, Trophy, Award, Shield, Eye, ScanLine, Gavel, Eye as EyeIcon, FileText, Navigation } from 'lucide-react-native';
 import { Colors } from '@/lib/theme';
 import type { ColorValue } from 'react-native';
 import { useState, useEffect } from 'react';
@@ -87,9 +87,9 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="treatments"
+        name="doctor"
         options={{
-          title: t('tabTreatments'),
+          title: t('tabDoctor'),
           tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Stethoscope color={color} size={26} />,
         }}
       />
@@ -101,6 +101,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="diagnostic"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="scan-pedigree"
+        options={{
+          title: t('tabScanPedigree'),
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <ScanLine color={color} size={26} />,
+        }}
+      />
+      <Tabs.Screen
         name="calculator"
         options={{
           title: t('tabGenetic'),
@@ -108,10 +121,31 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="assistant"
+        name="auctions"
         options={{
-          title: t('tabAssistant'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <MessageCircle color={color} size={26} />,
+          title: t('tabAuctions'),
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Gavel color={color} size={26} />,
+        }}
+      />
+      <Tabs.Screen
+        name="eye-sign"
+        options={{
+          title: t('tabEyeSign'),
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <EyeIcon color={color} size={26} />,
+        }}
+      />
+      <Tabs.Screen
+        name="pdf-catalog"
+        options={{
+          title: t('tabPdfCatalog'),
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <FileText color={color} size={26} />,
+        }}
+      />
+      <Tabs.Screen
+        name="copilot"
+        options={{
+          title: t('tabCopilot'),
+          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Navigation color={color} size={26} />,
         }}
       />
       <Tabs.Screen
@@ -148,6 +182,30 @@ export default function TabLayout() {
       />
       <Tabs.Screen
         name="pedigree"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="auction-detail"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="auction-create"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="treatments"
+        options={{
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="assistant"
         options={{
           href: null,
         }}

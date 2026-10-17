@@ -26,6 +26,7 @@ interface OptionCard {
 }
 
 const ro = {
+  welcome: 'Dacă ești aici, sigur iubești porumbeii!',
   title: 'Ce fel de porumbei aveți?',
   subtitle: 'Selectează categoria pentru a personaliza aplicația',
   continue: 'Continuă',
@@ -36,6 +37,7 @@ const ro = {
 };
 
 const en = {
+  welcome: 'If you\'re here, you surely love pigeons!',
   title: 'What kind of pigeons do you have?',
   subtitle: 'Select a category to personalize the app',
   continue: 'Continue',
@@ -81,6 +83,7 @@ export default function OnboardingScreen() {
             <View style={styles.logoCircle}>
               <Bird color={Colors.white} size={32} />
             </View>
+            <Text style={styles.welcomeText}>{L.welcome}</Text>
             <Text style={styles.title}>{L.title}</Text>
             <Text style={styles.subtitle}>{L.subtitle}</Text>
           </View>
@@ -181,6 +184,14 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
     letterSpacing: -0.5,
+  },
+  welcomeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 18,
+    color: Colors.goldLight,
+    textAlign: 'center',
+    marginBottom: 10,
+    fontStyle: 'italic',
   },
   subtitle: {
     fontFamily: 'Inter-Regular',
