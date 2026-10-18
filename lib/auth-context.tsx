@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
-import type { Profile, SubscriptionPlan, PigeonType } from './types';
+import type { Profile, SubscriptionPlan, PigeonType, PigeonCategory } from './types';
 import { Platform } from 'react-native';
 
 interface VipStatus {
@@ -21,7 +21,9 @@ interface AuthContextType {
   deviceLockError: string | null;
   clearDeviceLockError: () => void;
   pigeonType: PigeonType | null;
+  pigeonCategories: PigeonCategory[] | null;
   setPigeonType: (type: PigeonType) => Promise<void>;
+  setPigeonCategories: (categories: PigeonCategory[]) => Promise<void>;
   signUp: (email: string, password: string, breederName: string) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
@@ -74,7 +76,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [deviceLockError, setDeviceLockError] = useState<string | null>(null);
 
   const pigeonType = profile?.pigeon_type ?? null;
-  const plan = profile?.subscription_plan || 'free';
+  const pigeonCategories = profile?.pigeon_categories ?? null;
+  const plan = profile?.subscription_plan || 'trial';
   const effectivePlan: SubscriptionPlan = vipStatus.isVip && vipStatus.vipPlan ? vipStatus.vipPlan : plan;
 
   const clearDeviceLockError = useCallback(() => setDeviceLockError(null), []);
@@ -189,7 +192,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: userId,
             email: email,
             breeder_name: email.split('@')[0],
-            subscription_plan: 'free',
+            subscription_plan: 'trial',
           })
           .select()
           .single();
@@ -231,6 +234,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await supabase
         .from('profiles')
         .update({ pigeon_type: type })
+        .eq('id', session.user.id);
+    }
+    await refreshProfile();
+  }, [session, refreshProfile]);
+
+  const setPigeonCategories = useCallback(async (categories: PigeonCategory[]) => {
+    if (!session?.user?.id) return;
+    const { error } = await supabase.rpc('set_pigeon_categories', { p_categories: categories });
+    if (error) {
+      // Fallback: derive type and update directly
+      const hasRacing = categories.some(c => c.startsWith('racing_'));
+      const hasFancy = categories.some(c => c.startsWith('fancy_'));
+      const derivedType = hasRacing && hasFancy ? 'both' : hasRacing ? 'racing' : hasFancy ? 'fancy' : null;
+      await supabase
+        .from('profiles')
+        .update({ pigeon_categories: categories, pigeon_type: derivedType })
         .eq('id', session.user.id);
     }
     await refreshProfile();
@@ -285,7 +304,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         deviceLockError,
         clearDeviceLockError,
         pigeonType,
+        pigeonCategories,
         setPigeonType,
+        setPigeonCategories,
         signUp,
         signIn,
         signOut,

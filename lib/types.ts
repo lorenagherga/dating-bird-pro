@@ -1,6 +1,10 @@
-export type SubscriptionPlan = 'free' | 'hobby' | 'standard' | 'professional';
+export type SubscriptionPlan = 'trial' | 'pro';
 
 export type PigeonType = 'racing' | 'fancy' | 'both';
+
+export type PigeonCategory = 'racing_speed' | 'racing_endurance' | 'fancy_exhibition' | 'fancy_flying';
+
+export const PIGEON_CATEGORIES: PigeonCategory[] = ['racing_speed', 'racing_endurance', 'fancy_exhibition', 'fancy_flying'];
 
 export type GameStyle = 'short' | 'medium' | 'long' | 'faller' | 'none';
 
@@ -30,6 +34,10 @@ export interface PigeonPalmares {
   race_name: string;
   year: number | null;
   distance_km: number | null;
+  birds_released: number | null;
+  fci_coefficient: number | null;
+  federation: string | null;
+  is_official_import: boolean;
   created_at: string;
 }
 
@@ -50,19 +58,22 @@ export interface Profile {
   breeder_name: string;
   subscription_plan: SubscriptionPlan;
   pigeon_type: PigeonType | null;
+  pigeon_categories: PigeonCategory[] | null;
   created_at: string;
 }
 
 export interface Pigeon {
   id: string;
   user_id: string;
-  ring_series: string;
+  ring_series: string | null;
   year: number | null;
   sex: 'Mascul' | 'Femelă';
   color: string;
   status: 'În crescătorie' | 'Dispărut' | 'Vândut';
   sire_id: string | null;
   dam_id: string | null;
+  sire_external_color: string | null;
+  dam_external_color: string | null;
   photo_url: string | null;
   notes: string;
   game_style: GameStyle | null;
@@ -103,26 +114,16 @@ export interface ChatMessage {
   created_at: string;
 }
 
+export const TRIAL_DAYS = 15;
+
 export const PLAN_LIMITS: Record<SubscriptionPlan, { pigeonLimit: number; hasPedigree: boolean; hasGeneticCalculator: boolean; hasTreatments: boolean }> = {
-  free: {
-    pigeonLimit: 5,
-    hasPedigree: false,
-    hasGeneticCalculator: false,
-    hasTreatments: false,
-  },
-  hobby: {
-    pigeonLimit: 25,
-    hasPedigree: false,
-    hasGeneticCalculator: false,
-    hasTreatments: false,
-  },
-  standard: {
-    pigeonLimit: 100,
-    hasPedigree: false,
-    hasGeneticCalculator: false,
+  trial: {
+    pigeonLimit: 999999,
+    hasPedigree: true,
+    hasGeneticCalculator: true,
     hasTreatments: true,
   },
-  professional: {
+  pro: {
     pigeonLimit: 999999,
     hasPedigree: true,
     hasGeneticCalculator: true,
@@ -131,15 +132,11 @@ export const PLAN_LIMITS: Record<SubscriptionPlan, { pigeonLimit: number; hasPed
 };
 
 export const PLAN_LABELS: Record<SubscriptionPlan, string> = {
-  free: 'Gratuit',
-  hobby: 'Hobby',
-  standard: 'Standard',
-  professional: 'Profesionist',
+  trial: 'Perioadă Probă',
+  pro: 'Pro',
 };
 
 export const PLAN_PRICES: Record<SubscriptionPlan, string> = {
-  free: '0€',
-  hobby: '4,99€/lună',
-  standard: '9,99€/lună',
-  professional: '19,99€/lună',
+  trial: '15 zile gratuit',
+  pro: '300 lei/an',
 };

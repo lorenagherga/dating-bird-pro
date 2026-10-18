@@ -114,7 +114,7 @@ async function searchDuckDuckGo(query: string): Promise<WebResult | null> {
   const url = `https://api.duckduckgo.com/?q=${encodedQuery}&format=json&no_html=1&skip_disambig=1`;
 
   const response = await fetch(url, {
-    headers: { "User-Agent": "DatingBirdPro/1.0" },
+    headers: { "User-Agent": "PigeonFanPro/1.0" },
   });
 
   if (!response.ok) return null;
@@ -154,7 +154,7 @@ async function searchWikipedia(query: string, lang: string): Promise<WebResult |
   const searchUrl = `https://${wikiLang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=2`;
 
   const response = await fetch(searchUrl, {
-    headers: { "User-Agent": "DatingBirdPro/1.0" },
+    headers: { "User-Agent": "PigeonFanPro/1.0" },
   });
 
   if (!response.ok) return null;
@@ -208,13 +208,10 @@ function buildCombinedResponse(
       response += `\n`;
     }
   } else {
-    // Fallback to general knowledge
+    // No web results — provide helpful general guidance instead of rigid "no results" message
     response += isRo
-      ? `ℹ️ Nu am găsit rezultate specifice pe web pentru această întrebare. `
-      : `ℹ️ I couldn't find specific web results for this question. `;
-    response += isRo
-      ? `Te pot ajuta cu întrebări despre: hrănire, antrenamente, boli, reproducere, împerechere, cuiburi, vaccinări sau tratamente.`
-      : `I can help with questions about: feeding, training, diseases, breeding, pairing, nests, vaccinations or treatments.`;
+      ? `Ca medic veterinar columbofil, te pot sfătui despre: hrănire, antrenamente, boli (tricomoneză, coriză, salmoneloză, coccidioză, variolă, paramixoviroză), reproducere, împerechere, cuiburi, vaccinări și tratamente. Reformulează întrebarea mai specific pentru un răspuns detaliat!`
+      : `As a pigeon veterinarian, I can advise on: feeding, training, diseases (trichomoniasis, coryza, salmonellosis, coccidiosis, pox, paramyxovirus), breeding, pairing, nests, vaccinations and treatments. Rephrase your question more specifically for a detailed answer!`;
   }
 
   // Section 3: Disclaimer
