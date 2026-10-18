@@ -64,7 +64,7 @@ export default function TreatmentsScreen() {
   });
   const [saving, setSaving] = useState(false);
 
-  const plan = profile?.subscription_plan || 'free';
+  const plan = profile?.subscription_plan || 'trial';
   const limits = PLAN_LIMITS[plan];
 
   const loadTreatments = useCallback(async () => {
@@ -177,7 +177,7 @@ export default function TreatmentsScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('treatmentsTitle')} subtitle={t('treatmentsSub')} />
+        <ScreenHeader title={t('treatmentsTitle')} subtitle={t('treatmentsSub')} showBack />
 
         {loading ? (
           <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 40 }} />

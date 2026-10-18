@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/lib/language-context';
 import { Colors } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { Shield, Trash2, CircleDot, Clock, CheckCircle, Inbox } from 'lucide-react-native';
+import { Shield, Trash2, CircleDot, Clock, CheckCircle, Inbox, Users, Check, X as XIcon } from 'lucide-react-native';
 
 interface SupportTicket {
   id: string;
@@ -21,6 +21,17 @@ interface SupportTicket {
   message: string;
   status: string;
   is_read: boolean;
+  created_at: string;
+}
+
+interface PartnerRequestRow {
+  id: string;
+  breeder_name: string;
+  county: string | null;
+  categories: string[];
+  contact_link: string | null;
+  user_id: string | null;
+  status: string;
   created_at: string;
 }
 
@@ -40,6 +51,8 @@ export default function AdminPanelScreen() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'new' | 'in_progress' | 'resolved'>('all');
+  const [partnerRequests, setPartnerRequests] = useState<PartnerRequestRow[]>([]);
+  const [partnerLoading, setPartnerLoading] = useState(true);
 
   const loadTickets = useCallback(async () => {
     setLoading(true);
@@ -54,6 +67,63 @@ export default function AdminPanelScreen() {
   useEffect(() => {
     loadTickets();
   }, [loadTickets]);
+
+  const loadPartnerRequests = useCallback(async () => {
+    setPartnerLoading(true);
+    const { data } = await supabase
+      .from('partner_requests')
+      .select('*')
+      .eq('status', 'pending')
+      .order('created_at', { ascending: false });
+    setPartnerRequests((data || []) as PartnerRequestRow[]);
+    setPartnerLoading(false);
+  }, []);
+
+  useEffect(() => {
+    loadPartnerRequests();
+  }, [loadPartnerRequests]);
+
+  const handleApprovePartner = (req: PartnerRequestRow) => {
+    Alert.alert(t('adminApprove'), `${t('adminApprove')} "${req.breeder_name}"?`, [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('adminApprove'),
+        onPress: async () => {
+          await supabase.from('elite_breeders').insert({
+            breeder_name: req.breeder_name,
+            county: req.county,
+            categories: req.categories,
+            description: '',
+            user_id: req.user_id,
+          });
+          await supabase
+            .from('partner_requests')
+            .update({ status: 'approved', reviewed_at: new Date().toISOString() })
+            .eq('id', req.id);
+          Alert.alert(t('success'), t('adminApprovedMsg'));
+          loadPartnerRequests();
+        },
+      },
+    ]);
+  };
+
+  const handleRejectPartner = (req: PartnerRequestRow) => {
+    Alert.alert(t('adminReject'), `${t('adminReject')} "${req.breeder_name}"?`, [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('adminReject'),
+        style: 'destructive',
+        onPress: async () => {
+          await supabase
+            .from('partner_requests')
+            .update({ status: 'rejected', reviewed_at: new Date().toISOString() })
+            .eq('id', req.id);
+          Alert.alert(t('success'), t('adminRejectedMsg'));
+          loadPartnerRequests();
+        },
+      },
+    ]);
+  };
 
   const handleMarkRead = async (ticket: SupportTicket) => {
     await supabase.from('support_tickets').update({ is_read: true }).eq('id', ticket.id);
@@ -101,7 +171,7 @@ export default function AdminPanelScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('adminPanel')} subtitle={t('adminPanelSub')} />
+        <ScreenHeader title={t('adminPanel')} subtitle={t('adminPanelSub')} showBack />
 
         <View style={styles.statsRow}>
           <View style={[styles.statCard, styles.statCardGold]}>
@@ -226,6 +296,63 @@ export default function AdminPanelScreen() {
             })}
           </View>
         )}
+
+        {/* Partner Requests Section */}
+        <View style={styles.partnerSection}>
+          <View style={styles.partnerSectionHeader}>
+            <Users color={Colors.gold} size={22} />
+            <View>
+              <Text style={styles.partnerSectionTitle}>{t('adminPartnerRequests')}</Text>
+              <Text style={styles.partnerSectionSub}>{t('adminPartnerReqSub')}</Text>
+            </View>
+          </View>
+
+          {partnerLoading ? (
+            <ActivityIndicator size="small" color={Colors.royalBlue} style={{ marginTop: 16 }} />
+          ) : partnerRequests.length === 0 ? (
+            <Text style={styles.partnerEmpty}>{t('adminNoTickets')}</Text>
+          ) : (
+            <View style={{ gap: 12 }}>
+              {partnerRequests.map((req) => (
+                <View key={req.id} style={styles.partnerReqCard}>
+                  <View style={styles.partnerReqTop}>
+                    <Text style={styles.partnerReqName}>{req.breeder_name}</Text>
+                    {req.county && <Text style={styles.partnerReqCounty}>{req.county}</Text>}
+                  </View>
+                  {req.categories.length > 0 && (
+                    <View style={styles.partnerReqCategories}>
+                      {req.categories.map((cat, idx) => (
+                        <View key={idx} style={styles.partnerReqCatChip}>
+                          <Text style={styles.partnerReqCatText}>{cat}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+                  {req.contact_link && (
+                    <Text style={styles.partnerReqLink} numberOfLines={1}>{req.contact_link}</Text>
+                  )}
+                  <Text style={styles.partnerReqDate}>{formatDate(req.created_at, language)}</Text>
+                  <View style={styles.partnerReqActions}>
+                    <TouchableOpacity
+                      style={styles.partnerApproveBtn}
+                      onPress={() => handleApprovePartner(req)}
+                    >
+                      <Check color={Colors.success} size={16} />
+                      <Text style={styles.partnerApproveText}>{t('adminApprove')}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.partnerRejectBtn}
+                      onPress={() => handleRejectPartner(req)}
+                    >
+                      <XIcon color={Colors.error} size={16} />
+                      <Text style={styles.partnerRejectText}>{t('adminReject')}</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </View>
   );
@@ -441,5 +568,122 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 18,
     color: Colors.text,
+  },
+  // Partner Requests
+  partnerSection: {
+    marginTop: 32,
+    backgroundColor: Colors.white,
+    borderRadius: 16,
+    padding: 18,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+  },
+  partnerSectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  partnerSectionTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 17,
+    color: Colors.text,
+  },
+  partnerSectionSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  partnerEmpty: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 14,
+    color: Colors.textLight,
+    textAlign: 'center',
+    paddingVertical: 20,
+  },
+  partnerReqCard: {
+    backgroundColor: Colors.neutral50,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  partnerReqTop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  partnerReqName: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 15,
+    color: Colors.text,
+    flex: 1,
+  },
+  partnerReqCounty: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  partnerReqCategories: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+    marginBottom: 8,
+  },
+  partnerReqCatChip: {
+    backgroundColor: Colors.royalBluePale,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  partnerReqCatText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: Colors.royalBlue,
+  },
+  partnerReqLink: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: Colors.royalBlue,
+    marginBottom: 4,
+  },
+  partnerReqDate: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 11,
+    color: Colors.textLight,
+    marginBottom: 10,
+  },
+  partnerReqActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  partnerApproveBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.successBg,
+  },
+  partnerApproveText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: Colors.success,
+  },
+  partnerRejectBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: Colors.errorBg,
+  },
+  partnerRejectText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: Colors.error,
   },
 });

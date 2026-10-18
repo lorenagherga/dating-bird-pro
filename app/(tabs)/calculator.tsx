@@ -255,7 +255,7 @@ export default function CalculatorScreen() {
   const router = useRouter();
   const { t, language } = useLanguage();
   const lang = language;
-  const plan = profile?.subscription_plan || 'free';
+  const plan = profile?.subscription_plan || 'trial';
   const limits = PLAN_LIMITS[plan];
 
   const [mode, setMode] = useState<'manual' | 'registry'>('manual');
@@ -365,7 +365,7 @@ export default function CalculatorScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('genProTitle')} subtitle={t('genProSub')} />
+        <ScreenHeader title={t('genProTitle')} subtitle={t('genProSub')} showBack />
 
         {/* Mode selector */}
         <View style={styles.modeSelector}>

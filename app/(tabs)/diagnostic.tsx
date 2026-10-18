@@ -203,7 +203,7 @@ export default function DiagnosticScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('diagTitle')} subtitle={t('diagSub')} />
+        <ScreenHeader title={t('diagTitle')} subtitle={t('diagSub')} showBack />
 
         {!photoUri && !cameraVisible && (
           <View style={styles.introContainer}>

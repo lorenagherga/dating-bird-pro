@@ -17,6 +17,7 @@ import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useCountdown, formatTimeRemaining, isUrgent } from '@/lib/auction-utils';
+import { useLocalSearchParams } from 'expo-router';
 import { Gavel, Plus, Crown, Bird, TrendingUp, Clock, Trophy, ChevronRight, Sparkles, Zap } from 'lucide-react-native';
 
 interface AuctionRow {
@@ -46,12 +47,14 @@ export default function AuctionsScreen() {
   const { t } = useLanguage();
   const { profile, isAdmin } = useAuth();
   const router = useRouter();
+  const params = useLocalSearchParams<{ sellerId?: string }>();
+  const sellerFilter = params.sellerId || null;
   const [auctions, setAuctions] = useState<AuctionRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<TabFilter>('all');
+  const [filter, setFilter] = useState<TabFilter>(sellerFilter ? 'all' : 'all');
   const [showPaywall, setShowPaywall] = useState(false);
 
-  const hasAccess = isAdmin || profile?.subscription_plan === 'professional' || profile?.subscription_plan === 'standard' || profile?.subscription_plan === 'hobby';
+  const hasAccess = isAdmin || profile?.subscription_plan === 'trial' || profile?.subscription_plan === 'pro';
 
   const loadAuctions = useCallback(async () => {
     setLoading(true);
@@ -72,10 +75,14 @@ export default function AuctionsScreen() {
       query = query.eq('status', 'active');
     }
 
+    if (sellerFilter) {
+      query = query.eq('seller_id', sellerFilter);
+    }
+
     const { data } = await query;
     setAuctions((data || []) as unknown as AuctionRow[]);
     setLoading(false);
-  }, [filter, profile?.id]);
+  }, [filter, profile?.id, sellerFilter]);
 
   useEffect(() => {
     loadAuctions();
@@ -111,25 +118,27 @@ export default function AuctionsScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false} refreshControl={undefined}>
-        <ScreenHeader title={t('aucTitle')} subtitle={t('aucSub')} />
+        <ScreenHeader title={sellerFilter ? t('partnerViewAuctions') : t('aucTitle')} subtitle={sellerFilter ? t('partnersTitle') : t('aucSub')} showBack />
 
-        <View style={styles.filterRow}>
-          {([
-            { key: 'all' as TabFilter, label: t('aucAllAuctions') },
-            { key: 'mine' as TabFilter, label: t('aucYourAuctions') },
-            { key: 'ended' as TabFilter, label: t('aucEndedAuctions') },
-          ]).map(f => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.filterBtn, filter === f.key && styles.filterBtnActive]}
-              onPress={() => setFilter(f.key)}
-            >
-              <Text style={[styles.filterBtnText, filter === f.key && styles.filterBtnTextActive]}>
-                {f.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {!sellerFilter && (
+          <View style={styles.filterRow}>
+            {([
+              { key: 'all' as TabFilter, label: t('aucAllAuctions') },
+              { key: 'mine' as TabFilter, label: t('aucYourAuctions') },
+              { key: 'ended' as TabFilter, label: t('aucEndedAuctions') },
+            ]).map(f => (
+              <TouchableOpacity
+                key={f.key}
+                style={[styles.filterBtn, filter === f.key && styles.filterBtnActive]}
+                onPress={() => setFilter(f.key)}
+              >
+                <Text style={[styles.filterBtnText, filter === f.key && styles.filterBtnTextActive]}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         {loading ? (
           <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 40 }} />
@@ -151,7 +160,7 @@ export default function AuctionsScreen() {
           </View>
         )}
 
-        {auctions.length > 0 && (
+        {auctions.length > 0 && !sellerFilter && (
           <TouchableOpacity style={styles.fab} onPress={() => router.push('/(tabs)/auction-create')}>
             <Plus color={Colors.white} size={26} />
           </TouchableOpacity>

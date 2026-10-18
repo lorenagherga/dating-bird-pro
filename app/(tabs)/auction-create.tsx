@@ -120,7 +120,7 @@ export default function AuctionCreateScreen() {
           <Text style={styles.backBtnText}>{t('aucCancel')}</Text>
         </TouchableOpacity>
 
-        <ScreenHeader title={t('aucCreateTitle')} subtitle={t('aucCreateSub')} />
+        <ScreenHeader title={t('aucCreateTitle')} subtitle={t('aucCreateSub')} showBack />
 
         <Text style={styles.sectionLabel}>{t('aucSelectPigeon')}</Text>
         {loading ? (

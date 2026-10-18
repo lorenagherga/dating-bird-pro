@@ -9,12 +9,14 @@ import {
   Modal,
   ActivityIndicator,
   Alert,
+  Switch,
+  FlatList,
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { Colors } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useLanguage } from '@/lib/language-context';
-import { Plus, X, Trash2, Pencil, Calendar, AlertCircle, Bird } from 'lucide-react-native';
+import { Plus, X, Trash2, Pencil, Calendar, AlertCircle, Bird, Heart, ChevronDown, Check, Egg, Undo2 } from 'lucide-react-native';
 
 interface NestRecord {
   id: string;
@@ -25,6 +27,9 @@ interface NestRecord {
   laying_date: string | null;
   hatching_date: string | null;
   chick_count: number;
+  is_foster: boolean;
+  foster_source_nest_id: string | null;
+  eggs_moved_to_foster: boolean;
 }
 
 function formatDate(dateStr: string | null, locale: string = 'ro-RO'): string {
@@ -52,6 +57,8 @@ export default function NestsScreen() {
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingNest, setEditingNest] = useState<NestRecord | null>(null);
+  const [fosterModalNest, setFosterModalNest] = useState<NestRecord | null>(null);
+  const [fosterPickerVisible, setFosterPickerVisible] = useState(false);
   const [form, setForm] = useState({
     nest_id: '',
     male_ring: '',
@@ -59,6 +66,7 @@ export default function NestsScreen() {
     pairing_date: '',
     laying_date: '',
     chick_count: '0',
+    is_foster: false,
   });
   const [saving, setSaving] = useState(false);
 
@@ -92,6 +100,7 @@ export default function NestsScreen() {
       pairing_date: new Date().toISOString().split('T')[0],
       laying_date: '',
       chick_count: '0',
+      is_foster: false,
     });
     setModalVisible(true);
   };
@@ -105,6 +114,7 @@ export default function NestsScreen() {
       pairing_date: nest.pairing_date || '',
       laying_date: nest.laying_date || '',
       chick_count: String(nest.chick_count),
+      is_foster: nest.is_foster,
     });
     setModalVisible(true);
   };
@@ -126,6 +136,7 @@ export default function NestsScreen() {
       laying_date: form.laying_date || null,
       hatching_date: hatchingDate,
       chick_count: parseInt(form.chick_count) || 0,
+      is_foster: form.is_foster,
     };
 
     if (editingNest) {
@@ -137,6 +148,50 @@ export default function NestsScreen() {
     setSaving(false);
     setModalVisible(false);
     loadNests();
+  };
+
+  const toggleFoster = async (nest: NestRecord, value: boolean) => {
+    await supabase.from('nests').update({ is_foster: value }).eq('id', nest.id);
+    loadNests();
+  };
+
+  const moveEggsToFoster = async (sourceNest: NestRecord, fosterNest: NestRecord) => {
+    setSaving(true);
+    await supabase.from('nests').update({ eggs_moved_to_foster: true }).eq('id', sourceNest.id);
+    await supabase.from('nests').update({
+      foster_source_nest_id: sourceNest.id,
+      laying_date: sourceNest.laying_date,
+      hatching_date: sourceNest.hatching_date,
+    }).eq('id', fosterNest.id);
+    setSaving(false);
+    setFosterPickerVisible(false);
+    setFosterModalNest(null);
+    Alert.alert(
+      t('eggsMovedTitle'),
+      `${t('eggsMovedMsg')} ${sourceNest.nest_id} (${sourceNest.male_ring} × ${sourceNest.female_ring})`,
+    );
+    loadNests();
+  };
+
+  const cancelEggTransfer = async (fosterNest: NestRecord) => {
+    if (!fosterNest.foster_source_nest_id) return;
+    Alert.alert(t('cancelEggTransfer'), t('cancelEggTransferMsg'), [
+      { text: t('cancel'), style: 'cancel' },
+      {
+        text: t('confirm'),
+        style: 'destructive',
+        onPress: async () => {
+          await supabase.from('nests').update({ eggs_moved_to_foster: false }).eq('id', fosterNest.foster_source_nest_id);
+          await supabase.from('nests').update({
+            foster_source_nest_id: null,
+            laying_date: null,
+            hatching_date: null,
+          }).eq('id', fosterNest.id);
+          Alert.alert(t('success'), t('transferCancelled'));
+          loadNests();
+        },
+      },
+    ]);
   };
 
   const handleDelete = (nest: NestRecord) => {
@@ -160,10 +215,17 @@ export default function NestsScreen() {
     return { bg: Colors.royalBluePale, text: Colors.royalBlue, label: t('waiting') };
   };
 
+  const fosterNests = nests.filter((n) => n.is_foster && !n.eggs_moved_to_foster && n.id !== fosterModalNest?.id);
+  const getSourceNestName = (sourceId: string | null) => {
+    if (!sourceId) return '';
+    const source = nests.find((n) => n.id === sourceId);
+    return source ? `${source.nest_id} (${source.male_ring} × ${source.female_ring})` : '';
+  };
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('bioCalendar')} subtitle={t('bioCalendarSub')} />
+        <ScreenHeader title={t('bioCalendar')} subtitle={t('bioCalendarSub')} showBack />
 
         {loading ? (
           <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 40 }} />
@@ -181,8 +243,9 @@ export default function NestsScreen() {
               return (
                 <View key={nest.id} style={styles.nestCard}>
                   <View style={styles.nestCardHeader}>
-                    <View style={styles.nestIdBadge}>
+                    <View style={[styles.nestIdBadge, nest.is_foster && styles.fosterBadge]}>
                       <Text style={styles.nestIdText}>{nest.nest_id}</Text>
+                      {nest.is_foster && <Heart color={Colors.white} size={12} />}
                     </View>
                     <View style={styles.nestActions}>
                       <TouchableOpacity style={styles.iconBtn} onPress={() => openEditModal(nest)}>
@@ -229,6 +292,54 @@ export default function NestsScreen() {
                     <View style={[styles.alertBar, { backgroundColor: alert.bg }]}>
                       <AlertCircle color={alert.text} size={16} />
                       <Text style={[styles.alertText, { color: alert.text }]}>{alert.label}</Text>
+                    </View>
+                  )}
+
+                  <View style={styles.fosterSwitchRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fosterSwitchLabel}>{t('fosterPair')}</Text>
+                      <Text style={styles.fosterSwitchDesc}>{t('fosterPairDesc')}</Text>
+                    </View>
+                    <Switch
+                      value={nest.is_foster}
+                      onValueChange={(v) => toggleFoster(nest, v)}
+                      trackColor={{ false: Colors.neutral200, true: Colors.gold }}
+                      thumbColor={nest.is_foster ? Colors.white : Colors.white}
+                    />
+                  </View>
+
+                  {!nest.is_foster && nest.laying_date && !nest.eggs_moved_to_foster && (
+                    <TouchableOpacity
+                      style={styles.moveEggsBtn}
+                      onPress={() => {
+                        setFosterModalNest(nest);
+                        setFosterPickerVisible(true);
+                      }}
+                    >
+                      <Egg color={Colors.white} size={18} />
+                      <Text style={styles.moveEggsBtnText}>{t('moveEggsToFoster')}</Text>
+                    </TouchableOpacity>
+                  )}
+
+                  {!nest.is_foster && nest.eggs_moved_to_foster && (
+                    <View style={styles.eggsMovedBadge}>
+                      <Egg color={Colors.gold} size={16} />
+                      <Text style={styles.eggsMovedText}>{t('eggsAtFoster')}</Text>
+                    </View>
+                  )}
+
+                  {nest.is_foster && nest.foster_source_nest_id && (
+                    <View style={styles.fosteringBadge}>
+                      <Heart color={Colors.royalBlue} size={16} />
+                      <Text style={styles.fosteringText}>
+                        {t('fosteringFor')} {getSourceNestName(nest.foster_source_nest_id)}
+                      </Text>
+                      <TouchableOpacity
+                        style={styles.cancelTransferBtn}
+                        onPress={() => cancelEggTransfer(nest)}
+                      >
+                        <Undo2 color={Colors.error} size={14} />
+                      </TouchableOpacity>
                     </View>
                   )}
                 </View>
@@ -329,6 +440,19 @@ export default function NestsScreen() {
               />
             </View>
 
+            <View style={styles.fosterFormRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.formLabel}>{t('fosterPair')}</Text>
+                <Text style={styles.fosterFormDesc}>{t('fosterPairDesc')}</Text>
+              </View>
+              <Switch
+                value={form.is_foster}
+                onValueChange={(v) => setForm({ ...form, is_foster: v })}
+                trackColor={{ false: Colors.neutral200, true: Colors.gold }}
+                thumbColor={Colors.white}
+              />
+            </View>
+
             <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
               {saving ? (
                 <ActivityIndicator color={Colors.white} />
@@ -338,6 +462,53 @@ export default function NestsScreen() {
             </TouchableOpacity>
             <View style={{ height: 40 }} />
           </ScrollView>
+        </View>
+      </Modal>
+
+      <Modal visible={fosterPickerVisible} animationType="slide" transparent={true} onRequestClose={() => setFosterPickerVisible(false)}>
+        <View style={styles.fosterPickerOverlay}>
+          <View style={styles.fosterPickerCard}>
+            <View style={styles.fosterPickerHeader}>
+              <Text style={styles.fosterPickerTitle}>{t('selectFoster')}</Text>
+              <TouchableOpacity onPress={() => setFosterPickerVisible(false)}>
+                <X color={Colors.text} size={22} />
+              </TouchableOpacity>
+            </View>
+
+            {fosterNests.length === 0 ? (
+              <View style={styles.noFosterState}>
+                <Heart color={Colors.textLight} size={36} />
+                <Text style={styles.noFosterText}>{t('noFosterPairs')}</Text>
+              </View>
+            ) : (
+              <FlatList
+                data={fosterNests}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => (
+                  <TouchableOpacity
+                    style={styles.fosterOption}
+                    onPress={() => fosterModalNest && moveEggsToFoster(fosterModalNest, item)}
+                  >
+                    <View style={styles.fosterOptionIcon}>
+                      <Heart color={Colors.gold} size={18} />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.fosterOptionId}>{item.nest_id}</Text>
+                      <Text style={styles.fosterOptionPair}>{item.male_ring} × {item.female_ring}</Text>
+                    </View>
+                    <ChevronDown color={Colors.textLight} size={20} style={{ transform: [{ rotate: '-90deg' }] }} />
+                  </TouchableOpacity>
+                )}
+                style={{ maxHeight: 300 }}
+              />
+            )}
+
+            {saving && (
+              <View style={styles.fosterSavingRow}>
+                <ActivityIndicator color={Colors.royalBlue} size="small" />
+              </View>
+            )}
+          </View>
         </View>
       </Modal>
     </View>
@@ -384,7 +555,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
+  fosterBadge: { backgroundColor: Colors.gold },
   nestIdText: { fontFamily: 'Inter-Bold', fontSize: 14, color: Colors.white },
   nestActions: { flexDirection: 'row', gap: 8 },
   iconBtn: {
@@ -434,6 +609,58 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
   alertText: { fontFamily: 'Inter-SemiBold', fontSize: 13 },
+  fosterSwitchRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingTop: 8,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+  },
+  fosterSwitchLabel: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.text },
+  fosterSwitchDesc: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  moveEggsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: Colors.gold,
+    borderRadius: 12,
+    paddingVertical: 14,
+  },
+  moveEggsBtnText: { fontFamily: 'Inter-Bold', fontSize: 15, color: Colors.white },
+  eggsMovedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.goldPale,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.goldLight,
+  },
+  eggsMovedText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.goldDark },
+  fosteringBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.royalBluePale,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: Colors.royalBlue,
+  },
+  fosteringText: { flex: 1, fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.royalBlue },
+  cancelTransferBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 7,
+    backgroundColor: 'rgba(0,0,0,0.05)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   // Modal
   modalContainer: { flex: 1, backgroundColor: Colors.background },
   modalHeader: {
@@ -474,6 +701,14 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   calcPreviewText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.royalBlue },
+  fosterFormRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  fosterFormDesc: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
   saveButton: {
     backgroundColor: Colors.royalBlue,
     borderRadius: 14,
@@ -482,4 +717,49 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   saveButtonText: { fontFamily: 'Inter-Bold', fontSize: 17, color: Colors.white },
+  // Foster picker modal
+  fosterPickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  fosterPickerCard: {
+    backgroundColor: Colors.white,
+    borderRadius: 20,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+  },
+  fosterPickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  fosterPickerTitle: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.text },
+  noFosterState: { alignItems: 'center', gap: 12, paddingVertical: 30 },
+  noFosterText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
+  fosterOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 12,
+    backgroundColor: Colors.neutral50,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
+  fosterOptionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 10,
+    backgroundColor: Colors.goldPale,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  fosterOptionId: { fontFamily: 'Inter-Bold', fontSize: 15, color: Colors.text },
+  fosterOptionPair: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
+  fosterSavingRow: { paddingVertical: 8, alignItems: 'center' },
 });

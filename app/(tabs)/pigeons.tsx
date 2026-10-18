@@ -19,9 +19,10 @@ import { supabase, SUPABASE_URL } from '@/lib/supabase';
 import { Colors } from '@/lib/theme';
 import { PLAN_LIMITS, GAME_STYLE_OPTIONS, GameStyle } from '@/lib/types';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { Plus, Camera, Image as ImageIcon, Trash2, Pencil, X, Bird, Crown, GitBranch, ChevronDown, Trophy, Award } from 'lucide-react-native';
+import { Plus, Camera, Image as ImageIcon, Trash2, Pencil, X, Bird, Crown, GitBranch, ChevronDown, Trophy, Award, Download, Wifi } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
+import { scrapeFederationResults, FEDERATION_NAMES, Federation, ScrapedResult } from '@/lib/federation-scraper';
 
 interface PigeonRecord {
   id: string;
@@ -64,12 +65,20 @@ export default function PigeonsScreen() {
   });
   const [sireMode, setSireMode] = useState<'registry' | 'external'>('registry');
   const [damMode, setDamMode] = useState<'registry' | 'external'>('registry');
+  const [fedModalVisible, setFedModalVisible] = useState(false);
+  const [fedPigeon, setFedPigeon] = useState<PigeonRecord | null>(null);
+  const [fedFederation, setFedFederation] = useState<Federation>('FNCPR');
+  const [fedYear, setFedYear] = useState(String(new Date().getFullYear()));
+  const [fedScanning, setFedScanning] = useState(false);
+  const [fedScanStep, setFedScanStep] = useState(0);
+  const [fedResults, setFedResults] = useState<ScrapedResult[] | null>(null);
+  const [fedImporting, setFedImporting] = useState(false);
   const [gameStyleDropdown, setGameStyleDropdown] = useState(false);
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const showGameStyle = pigeonType === 'fancy' || pigeonType === 'both';
-  const plan = profile?.subscription_plan || 'free';
+  const plan = profile?.subscription_plan || 'trial';
   const limits = PLAN_LIMITS[plan];
 
   const gameStyleLabel = (style: GameStyle): string => {
@@ -103,7 +112,7 @@ export default function PigeonsScreen() {
     if (!canAddMore) {
       Alert.alert(
         t('limitReached'),
-        `${plan === 'free' ? t('planFree') : plan} · ${limits.pigeonLimit} ${t('limitReachedMsg')}`,
+        `${t('planTrial')} · ${limits.pigeonLimit} ${t('limitReachedMsg')}`,
         [
           { text: t('seePlans'), onPress: () => router.push('/(tabs)/profile') },
           { text: t('close') },
@@ -233,14 +242,48 @@ export default function PigeonsScreen() {
       if (uploaded) photoUrl = uploaded;
     }
 
+    let finalSireId = sireMode === 'registry' ? (form.sire_id || null) : null;
+    let finalDamId = damMode === 'registry' ? (form.dam_id || null) : null;
+
+    if (finalSireId && finalDamId) {
+      const { data: sirePigeon } = await supabase.from('pigeons').select('ring_series').eq('id', finalSireId).maybeSingle();
+      const { data: damPigeon } = await supabase.from('pigeons').select('ring_series').eq('id', finalDamId).maybeSingle();
+
+      if (sirePigeon?.ring_series && damPigeon?.ring_series) {
+        const { data: fosterNest } = await supabase
+          .from('nests')
+          .select('id, foster_source_nest_id')
+          .eq('is_foster', true)
+          .not('foster_source_nest_id', 'is', null)
+          .eq('male_ring', sirePigeon.ring_series)
+          .eq('female_ring', damPigeon.ring_series)
+          .maybeSingle();
+
+        if (fosterNest?.foster_source_nest_id) {
+          const { data: sourceNest } = await supabase
+            .from('nests')
+            .select('male_ring, female_ring')
+            .eq('id', fosterNest.foster_source_nest_id)
+            .maybeSingle();
+
+          if (sourceNest?.male_ring && sourceNest?.female_ring) {
+            const { data: geneticSire } = await supabase.from('pigeons').select('id').eq('ring_series', sourceNest.male_ring).maybeSingle();
+            const { data: geneticDam } = await supabase.from('pigeons').select('id').eq('ring_series', sourceNest.female_ring).maybeSingle();
+            if (geneticSire?.id) finalSireId = geneticSire.id;
+            if (geneticDam?.id) finalDamId = geneticDam.id;
+          }
+        }
+      }
+    }
+
     const payload = {
       ring_series: form.ring_series.trim() || null,
       year: form.year ? parseInt(form.year) : null,
       sex: form.sex,
       color: form.color.trim(),
       status: form.status,
-      sire_id: sireMode === 'registry' ? (form.sire_id || null) : null,
-      dam_id: damMode === 'registry' ? (form.dam_id || null) : null,
+      sire_id: finalSireId,
+      dam_id: finalDamId,
       sire_external_color: sireMode === 'external' ? form.sire_external_color.trim() || null : null,
       dam_external_color: damMode === 'external' ? form.dam_external_color.trim() || null : null,
       photo_url: photoUrl,
@@ -258,6 +301,56 @@ export default function PigeonsScreen() {
     setSaving(false);
     setModalVisible(false);
     loadPigeons();
+  };
+
+  const openFedModal = (pigeon: PigeonRecord) => {
+    setFedPigeon(pigeon);
+    setFedFederation('FNCPR');
+    setFedYear(String(new Date().getFullYear()));
+    setFedScanning(false);
+    setFedScanStep(0);
+    setFedResults(null);
+    setFedImporting(false);
+    setFedModalVisible(true);
+  };
+
+  const startFedScan = async () => {
+    if (!fedPigeon) return;
+    setFedScanning(true);
+    setFedScanStep(0);
+    setFedResults(null);
+
+    for (let step = 1; step <= 4; step++) {
+      setFedScanStep(step);
+      await new Promise((resolve) => setTimeout(resolve, 500 + Math.random() * 400));
+    }
+
+    const results = await scrapeFederationResults(fedFederation, parseInt(fedYear), fedPigeon.ring_series);
+    setFedResults(results);
+    setFedScanning(false);
+  };
+
+  const importFedResults = async () => {
+    if (!fedResults || !fedResults.length || !fedPigeon || !profile?.id) return;
+    setFedImporting(true);
+
+    const rows = fedResults.map((r) => ({
+      user_id: profile.id,
+      pigeon_id: fedPigeon.id,
+      position: r.position,
+      race_name: r.race_name,
+      year: r.year,
+      distance_km: r.distance_km,
+      birds_released: r.birds_released,
+      fci_coefficient: r.fci_coefficient,
+      federation: fedFederation,
+      is_official_import: true,
+    }));
+
+    await supabase.from('pigeon_palmares').insert(rows);
+    setFedImporting(false);
+    setFedModalVisible(false);
+    Alert.alert(t('success'), t('fedImported'));
   };
 
   const handleDelete = (pigeon: PigeonRecord) => {
@@ -308,6 +401,9 @@ export default function PigeonsScreen() {
         )}
       </View>
       <View style={styles.pigeonActions}>
+        <TouchableOpacity style={styles.iconBtnGold} onPress={() => openFedModal(item)}>
+          <Download color={Colors.goldDark} size={18} />
+        </TouchableOpacity>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.push(`/(tabs)/pedigree?id=${item.id}`)}>
           <GitBranch color={Colors.royalBlue} size={18} />
         </TouchableOpacity>
@@ -635,6 +731,139 @@ export default function PigeonsScreen() {
           </ScrollView>
         </View>
       </Modal>
+
+      <Modal visible={fedModalVisible} animationType="slide" transparent={false}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>{t('fedSyncTitle')}</Text>
+              <Text style={styles.fedModalSub}>{t('fedSyncSub')}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setFedModalVisible(false)}>
+              <X color={Colors.text} size={24} />
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
+            {fedPigeon && (
+              <View style={styles.fedPigeonInfo}>
+                <Text style={styles.fedPigeonRing}>{fedPigeon.ring_series || '(fără inel)'}</Text>
+                <Text style={styles.fedPigeonDetails}>
+                  {fedPigeon.year || '—'} · {fedPigeon.sex === 'Mascul' ? t('male') : t('female')} · {fedPigeon.color || t('noColor')}
+                </Text>
+              </View>
+            )}
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>{t('fedSelectFederation')}</Text>
+              <View style={styles.fedFederationRow}>
+                {(Object.keys(FEDERATION_NAMES) as Federation[]).map((fed) => (
+                  <TouchableOpacity
+                    key={fed}
+                    style={[styles.fedFedBtn, fedFederation === fed && styles.fedFedBtnActive]}
+                    onPress={() => setFedFederation(fed)}
+                    disabled={fedScanning}
+                  >
+                    <Text style={[styles.fedFedBtnText, fedFederation === fed && styles.fedFedBtnTextActive]}>
+                      {FEDERATION_NAMES[fed]}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>{t('fedSelectYear')}</Text>
+              <TextInput
+                style={styles.formInput}
+                value={fedYear}
+                onChangeText={(v) => setFedYear(v)}
+                placeholder="2024"
+                placeholderTextColor={Colors.textLight}
+                keyboardType="numeric"
+                editable={!fedScanning}
+              />
+            </View>
+
+            {!fedScanning && !fedResults && (
+              <TouchableOpacity style={styles.fedScanBtn} onPress={startFedScan}>
+                <Wifi color={Colors.white} size={20} />
+                <Text style={styles.fedScanBtnText}>{t('fedStartScan')}</Text>
+              </TouchableOpacity>
+            )}
+
+            {fedScanning && (
+              <View style={styles.fedScanningContainer}>
+                <ActivityIndicator size="large" color={Colors.royalBlue} />
+                <Text style={styles.fedScanningText}>{t('fedScanning')}</Text>
+                <View style={styles.fedScanSteps}>
+                  {[1, 2, 3, 4].map((step) => (
+                    <View key={step} style={[styles.fedScanStep, fedScanStep >= step && styles.fedScanStepActive]}>
+                      <Text style={[styles.fedScanStepText, fedScanStep >= step && styles.fedScanStepTextActive]}>
+                        {step === 1 ? t('fedScanStep1') : step === 2 ? t('fedScanStep2') : step === 3 ? t('fedScanStep3') : t('fedScanStep4')}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              </View>
+            )}
+
+            {!fedScanning && fedResults && fedResults.length === 0 && (
+              <View style={styles.fedNoResults}>
+                <Text style={styles.fedNoResultsText}>{t('fedNoResults')}</Text>
+              </View>
+            )}
+
+            {!fedScanning && fedResults && fedResults.length > 0 && (
+              <View style={styles.fedResultsContainer}>
+                <View style={styles.fedResultsHeader}>
+                  <Text style={styles.fedResultsCount}>
+                    {fedResults.length} {t('fedResultsFound')}
+                  </Text>
+                  <View style={styles.fedOfficialBadge}>
+                    <Text style={styles.fedOfficialBadgeText}>{t('fedOfficial')}</Text>
+                  </View>
+                </View>
+
+                {fedResults.map((r, idx) => (
+                  <View key={idx} style={styles.fedResultCard}>
+                    <View style={[styles.fedPositionBadge, r.position <= 3 && styles.fedPositionBadgeTop]}>
+                      <Text style={styles.fedPositionText}>{r.position}</Text>
+                    </View>
+                    <View style={styles.fedResultInfo}>
+                      <Text style={styles.fedRaceName}>{r.race_name}</Text>
+                      <Text style={styles.fedResultDetails}>
+                        {r.distance_km} km · {t('fedBirdsReleased')}: {r.birds_released}
+                      </Text>
+                      <View style={styles.fedFciRow}>
+                        <View style={styles.fedFciBadge}>
+                          <Text style={styles.fedFciText}>{t('fedFCICoeff')}: {r.fci_coefficient.toFixed(2)}</Text>
+                        </View>
+                        <View style={styles.fedFedBadge}>
+                          <Text style={styles.fedFedText}>{fedFederation}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+
+                <TouchableOpacity style={styles.fedImportBtn} onPress={importFedResults} disabled={fedImporting}>
+                  {fedImporting ? (
+                    <ActivityIndicator color={Colors.goldDark} />
+                  ) : (
+                    <>
+                      <Download color={Colors.goldDark} size={20} />
+                      <Text style={styles.fedImportBtnText}>{t('fedImportAll')}</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+
+            <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -945,5 +1174,220 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-Regular',
     fontSize: 12,
     color: Colors.textSecondary,
+  },
+  // Federation import styles
+  fedModalSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  fedPigeonInfo: {
+    backgroundColor: Colors.royalBluePale,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+    alignItems: 'center',
+  },
+  fedPigeonRing: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 18,
+    color: Colors.royalBlue,
+  },
+  fedPigeonDetails: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: Colors.textSecondary,
+    marginTop: 4,
+  },
+  fedFederationRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  fedFedBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 10,
+    backgroundColor: Colors.white,
+    borderWidth: 1.5,
+    borderColor: Colors.borderLight,
+    alignItems: 'center',
+  },
+  fedFedBtnActive: {
+    backgroundColor: Colors.royalBlue,
+    borderColor: Colors.royalBlue,
+  },
+  fedFedBtnText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: Colors.textSecondary,
+  },
+  fedFedBtnTextActive: {
+    color: Colors.white,
+  },
+  fedScanBtn: {
+    flexDirection: 'row',
+    backgroundColor: Colors.royalBlue,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 8,
+  },
+  fedScanBtnText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 17,
+    color: Colors.white,
+  },
+  fedScanningContainer: {
+    alignItems: 'center',
+    paddingVertical: 24,
+    gap: 16,
+  },
+  fedScanningText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: Colors.royalBlue,
+  },
+  fedScanSteps: {
+    width: '100%',
+    gap: 8,
+  },
+  fedScanStep: {
+    backgroundColor: Colors.neutral100,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+  },
+  fedScanStepActive: {
+    backgroundColor: Colors.royalBluePale,
+  },
+  fedScanStepText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: Colors.textLight,
+  },
+  fedScanStepTextActive: {
+    color: Colors.royalBlue,
+    fontFamily: 'Inter-SemiBold',
+  },
+  fedNoResults: {
+    alignItems: 'center',
+    paddingVertical: 32,
+  },
+  fedNoResultsText: {
+    fontFamily: 'Inter-Medium',
+    fontSize: 15,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+  },
+  fedResultsContainer: {
+    gap: 12,
+    marginTop: 8,
+  },
+  fedResultsHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  fedResultsCount: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 16,
+    color: Colors.text,
+  },
+  fedOfficialBadge: {
+    backgroundColor: Colors.goldLight,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+  },
+  fedOfficialBadgeText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: Colors.goldDark,
+  },
+  fedResultCard: {
+    flexDirection: 'row',
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    gap: 14,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  fedPositionBadge: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: Colors.neutral100,
+  },
+  fedPositionBadgeTop: {
+    backgroundColor: Colors.goldLight,
+  },
+  fedPositionText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 20,
+    color: Colors.text,
+  },
+  fedResultInfo: {
+    flex: 1,
+    gap: 4,
+  },
+  fedRaceName: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: Colors.text,
+  },
+  fedResultDetails: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: Colors.textSecondary,
+  },
+  fedFciRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 4,
+  },
+  fedFciBadge: {
+    backgroundColor: Colors.royalBluePale,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  fedFciText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: Colors.royalBlue,
+  },
+  fedFedBadge: {
+    backgroundColor: Colors.goldPale,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  fedFedText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: Colors.goldDark,
+  },
+  fedImportBtn: {
+    flexDirection: 'row',
+    backgroundColor: Colors.goldLight,
+    borderRadius: 14,
+    paddingVertical: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+    marginTop: 8,
+    borderWidth: 2,
+    borderColor: Colors.gold,
+  },
+  fedImportBtnText: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 17,
+    color: Colors.goldDark,
   },
 });

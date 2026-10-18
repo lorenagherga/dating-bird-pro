@@ -1,8 +1,8 @@
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
-import { Colors, Shadows } from '@/lib/theme';
+import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { PLAN_LABELS, PLAN_LIMITS } from '@/lib/types';
 import {
   Bird,
@@ -13,8 +13,13 @@ import {
   Crown,
   LogOut,
   Sparkles,
+  AlertTriangle,
+  ShieldCheck,
+  Trophy,
+  Award,
+  Zap,
 } from 'lucide-react-native';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
 
 interface ModuleCard {
@@ -26,13 +31,19 @@ interface ModuleCard {
 }
 
 export default function DashboardScreen() {
-  const { profile, signOut, isAdmin, isVip, effectivePlan } = useAuth();
-  const { t } = useLanguage();
+  const { profile, signOut, isAdmin, isVip, effectivePlan, pigeonCategories } = useAuth();
+  const { t, language } = useLanguage();
   const router = useRouter();
   const [pigeonCount, setPigeonCount] = useState(0);
+  const [swallowArrival, setSwallowArrival] = useState(false);
+  const [swallowDeparture, setSwallowDeparture] = useState(false);
+  const [swallowArrivalDate, setSwallowArrivalDate] = useState<string | null>(null);
+  const [swallowDepartureDate, setSwallowDepartureDate] = useState<string | null>(null);
+  const currentYear = new Date().getFullYear();
 
   useEffect(() => {
     loadPigeonCount();
+    loadSwallowStatus();
   }, []);
 
   const loadPigeonCount = async () => {
@@ -42,8 +53,78 @@ export default function DashboardScreen() {
     setPigeonCount(count || 0);
   };
 
+  const loadSwallowStatus = useCallback(async () => {
+    if (!profile?.id) return;
+    const { data } = await supabase
+      .from('swallow_monitor')
+      .select('*')
+      .eq('user_id', profile.id)
+      .eq('year', currentYear);
+    if (data) {
+      for (const row of data) {
+        if (row.event_type === 'arrival') {
+          setSwallowArrival(true);
+          setSwallowArrivalDate(row.event_date);
+        } else if (row.event_type === 'departure') {
+          setSwallowDeparture(true);
+          setSwallowDepartureDate(row.event_date);
+        }
+      }
+    }
+  }, [profile?.id, currentYear]);
+
+  const handleSwallowToggle = async (eventType: 'arrival' | 'departure', enabled: boolean) => {
+    if (!profile?.id) return;
+    if (enabled) {
+      const today = new Date().toISOString().split('T')[0];
+      const { error } = await supabase.from('swallow_monitor').upsert({
+        user_id: profile.id,
+        event_type: eventType,
+        event_date: today,
+        year: currentYear,
+      }, { onConflict: 'user_id,event_type,year' });
+      if (error) return;
+      if (eventType === 'arrival') {
+        setSwallowArrival(true);
+        setSwallowArrivalDate(today);
+      } else {
+        setSwallowDeparture(true);
+        setSwallowDepartureDate(today);
+      }
+    } else {
+      const { error } = await supabase
+        .from('swallow_monitor')
+        .delete()
+        .eq('user_id', profile.id)
+        .eq('event_type', eventType)
+        .eq('year', currentYear);
+      if (error) return;
+      if (eventType === 'arrival') {
+        setSwallowArrival(false);
+        setSwallowArrivalDate(null);
+      } else {
+        setSwallowDeparture(false);
+        setSwallowDepartureDate(null);
+      }
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString(language === 'ro' ? 'ro-RO' : 'en-US', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    });
+  };
+
   const plan = effectivePlan;
   const limits = PLAN_LIMITS[plan];
+
+  const hasRacing = pigeonCategories?.some(c => c.startsWith('racing_')) ?? false;
+  const hasFancy = pigeonCategories?.some(c => c.startsWith('fancy_')) ?? false;
+  // Default: show all modules if no categories selected yet
+  const showAll = !pigeonCategories || pigeonCategories.length === 0;
 
   const handleNavigate = (route: string, locked?: boolean) => {
     if (locked) {
@@ -61,12 +142,14 @@ export default function DashboardScreen() {
   };
 
   const modules: ModuleCard[] = [
+    // Registry — always shown
     {
       title: t('modRegistry'),
       subtitle: t('modRegistrySub'),
       icon: <Bird color={Colors.white} size={26} strokeWidth={1.8} />,
       route: '/(tabs)/pigeons',
     },
+    // Pedigree — always shown
     {
       title: t('modPedigree'),
       subtitle: t('modPedigreeSub'),
@@ -74,18 +157,42 @@ export default function DashboardScreen() {
       route: '/(tabs)/pigeons',
       locked: !limits.hasPedigree,
     },
+    // Races & Training — only for racing categories
+    ...(showAll || hasRacing ? [{
+      title: t('onbModRaces'),
+      subtitle: t('onbModRacesSub'),
+      icon: <Trophy color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
+      route: '/(tabs)/races',
+    }] : []),
+    // FCI Calculator — only for racing categories
+    ...(showAll || hasRacing ? [{
+      title: t('onbModFci'),
+      subtitle: t('onbModFciSub'),
+      icon: <Zap color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
+      route: '/(tabs)/palmares',
+    }] : []),
+    // Standards & Judging — only for fancy exhibition
+    ...(showAll || pigeonCategories?.includes('fancy_exhibition') ? [{
+      title: t('onbModStandards'),
+      subtitle: t('onbModStandardsSub'),
+      icon: <Award color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
+      route: '/(tabs)/vitrina',
+    }] : []),
+    // Flying & Performance — only for fancy flying
+    ...(showAll || pigeonCategories?.includes('fancy_flying') ? [{
+      title: t('onbModBeauty'),
+      subtitle: t('onbModBeautySub'),
+      icon: <Sparkles color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
+      route: '/(tabs)/vitrina',
+    }] : []),
+    // Calendar (Nests) — always shown
     {
       title: t('modCalendar'),
       subtitle: t('modCalendarSub'),
       icon: <Calendar color={Colors.white} size={26} strokeWidth={1.8} />,
       route: '/(tabs)/nests',
     },
-    {
-      title: t('doctorTitle'),
-      subtitle: t('doctorSub'),
-      icon: <Stethoscope color={Colors.white} size={26} strokeWidth={1.8} />,
-      route: '/(tabs)/doctor',
-    },
+    // Genetic Calculator — always shown (locked by plan)
     {
       title: t('modCalculator'),
       subtitle: t('modCalculatorSub'),
@@ -141,17 +248,82 @@ export default function DashboardScreen() {
 
           <TouchableOpacity
             style={styles.assistantHero}
-            onPress={() => router.push('/(tabs)/assistant')}
+            onPress={() => router.push('/(tabs)/doctor')}
             activeOpacity={0.9}
           >
             <View style={styles.assistantHeroIcon}>
-              <Sparkles color={Colors.white} size={28} strokeWidth={1.8} />
+              <Stethoscope color={Colors.white} size={28} strokeWidth={1.8} />
             </View>
             <View style={{ flex: 1 }}>
-              <Text style={styles.assistantHeroTitle}>{t('modAssistant')}</Text>
-              <Text style={styles.assistantHeroSub}>{t('modAssistantSub')}</Text>
+              <Text style={styles.assistantHeroTitle}>{t('doctorTitle')}</Text>
+              <Text style={styles.assistantHeroSub}>{t('doctorSub')}</Text>
             </View>
           </TouchableOpacity>
+
+        {/* Swallow Monitor — Regula Rândunicii */}
+        <View style={styles.swallowCard}>
+          <View style={styles.swallowHeader}>
+            <View style={styles.swallowIconBox}>
+              <Bird color={Colors.gold} size={22} strokeWidth={1.8} />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.swallowTitle}>{t('swallowMonitorTitle')}</Text>
+              <Text style={styles.swallowSub}>{t('swallowMonitorSub')}</Text>
+            </View>
+          </View>
+
+          <View style={styles.swallowToggles}>
+            <View style={styles.swallowToggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.swallowToggleLabel}>{t('swallowArrival')}</Text>
+                {swallowArrivalDate && (
+                  <Text style={styles.swallowDateText}>{t('swallowRecordedOn')} {formatDate(swallowArrivalDate)}</Text>
+                )}
+              </View>
+              <Switch
+                value={swallowArrival}
+                onValueChange={(v) => handleSwallowToggle('arrival', v)}
+                trackColor={{ false: Colors.border, true: Colors.success }}
+                thumbColor={swallowArrival ? Colors.white : Colors.white}
+              />
+            </View>
+            <View style={styles.swallowDivider} />
+            <View style={styles.swallowToggleRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.swallowToggleLabel}>{t('swallowDeparture')}</Text>
+                {swallowDepartureDate && (
+                  <Text style={styles.swallowDateText}>{t('swallowRecordedOn')} {formatDate(swallowDepartureDate)}</Text>
+                )}
+              </View>
+              <Switch
+                value={swallowDeparture}
+                onValueChange={(v) => handleSwallowToggle('departure', v)}
+                trackColor={{ false: Colors.border, true: Colors.warning }}
+                thumbColor={swallowDeparture ? Colors.white : Colors.white}
+              />
+            </View>
+          </View>
+
+          {/* Alert banners */}
+          {swallowDeparture && (
+            <View style={styles.swallowRiskBanner}>
+              <AlertTriangle color={Colors.error} size={18} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.swallowRiskTitle}>{t('swallowRiskActive')}</Text>
+                <Text style={styles.swallowRiskMsg}>{t('swallowRiskMsg')}</Text>
+              </View>
+            </View>
+          )}
+          {swallowArrival && !swallowDeparture && (
+            <View style={styles.swallowSafeBanner}>
+              <ShieldCheck color={Colors.success} size={18} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.swallowSafeTitle}>{t('swallowSafeSeason')}</Text>
+                <Text style={styles.swallowSafeMsg}>{t('swallowSafeMsg')}</Text>
+              </View>
+            </View>
+          )}
+        </View>
 
         <View style={styles.modulesGrid}>
           {modules.map((mod, idx) => (
@@ -182,7 +354,7 @@ export default function DashboardScreen() {
           ))}
         </View>
 
-        {plan === 'free' && (
+        {plan === 'trial' && (
           <TouchableOpacity
             style={styles.upgradeBanner}
             onPress={() => router.push('/(tabs)/profile')}
@@ -375,6 +547,112 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: Colors.gold,
     ...Shadows.gold,
+  },
+  // Swallow Monitor
+  swallowCard: {
+    backgroundColor: Colors.royalBlueDark,
+    borderRadius: BorderRadius.lg,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: Colors.gold,
+    ...Shadows.gold,
+  },
+  swallowHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 16,
+  },
+  swallowIconBox: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  swallowTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 17,
+    color: Colors.white,
+  },
+  swallowSub: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.7)',
+    marginTop: 2,
+  },
+  swallowToggles: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 4,
+  },
+  swallowToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+  },
+  swallowToggleLabel: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
+    color: Colors.white,
+  },
+  swallowDateText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 12,
+    color: 'rgba(255,255,255,0.6)',
+    marginTop: 2,
+  },
+  swallowDivider: {
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+  },
+  swallowRiskBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: Colors.errorBg,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 14,
+  },
+  swallowRiskTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 14,
+    color: Colors.error,
+  },
+  swallowRiskMsg: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: Colors.error,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  swallowSafeBanner: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    backgroundColor: Colors.successBg,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginTop: 14,
+  },
+  swallowSafeTitle: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 14,
+    color: Colors.success,
+  },
+  swallowSafeMsg: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: Colors.success,
+    marginTop: 2,
+    lineHeight: 18,
   },
   upgradeTitle: {
     fontFamily: 'Inter-SemiBold',

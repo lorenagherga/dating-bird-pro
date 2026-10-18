@@ -13,14 +13,12 @@ import {
 } from 'react-native';
 import { useAuth } from '@/lib/auth-context';
 import { Colors } from '@/lib/theme';
-import { PLAN_LABELS, PLAN_LIMITS, PLAN_PRICES, SubscriptionPlan } from '@/lib/types';
+import { PLAN_LABELS, PLAN_PRICES, PLAN_LIMITS, TRIAL_DAYS, SubscriptionPlan } from '@/lib/types';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { Crown, Check, LogOut, Shield, Star, Trash2, UserPlus, X, Bell, Unlock, Eye, MessageSquarePlus, ChevronRight } from 'lucide-react-native';
+import { Crown, Check, LogOut, Shield, Star, Trash2, UserPlus, X, Bell, Unlock, Eye, MessageSquarePlus, ChevronRight, Users } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/lib/language-context';
 import { LANGUAGE_LIST, Language } from '@/lib/i18n';
-
-const PLAN_ORDER: SubscriptionPlan[] = ['free', 'hobby', 'standard', 'professional'];
 
 interface VipEntry {
   id: string;
@@ -39,6 +37,14 @@ interface AdminNotification {
   is_read: boolean;
 }
 
+interface PartnerEntry {
+  id: string;
+  breeder_name: string;
+  county: string | null;
+  email: string | null;
+  is_featured: boolean;
+}
+
 export default function ProfileScreen() {
   const { profile, signOut, isAdmin, isVip, vipPlan, effectivePlan, updatePlan } = useAuth();
   const [pigeonCount, setPigeonCount] = useState(0);
@@ -47,7 +53,6 @@ export default function ProfileScreen() {
   const [vipLoading, setVipLoading] = useState(false);
   const [showVipModal, setShowVipModal] = useState(false);
   const [newVipEmail, setNewVipEmail] = useState('');
-  const [newVipPlan, setNewVipPlan] = useState<SubscriptionPlan>('professional');
   const [newVipReason, setNewVipReason] = useState('');
   const [adminNotifications, setAdminNotifications] = useState<AdminNotification[]>([]);
   const [notifLoading, setNotifLoading] = useState(false);
@@ -57,24 +62,14 @@ export default function ProfileScreen() {
   const [supportType, setSupportType] = useState<'bug' | 'suggestion'>('bug');
   const [supportMessage, setSupportMessage] = useState('');
   const [supportSending, setSupportSending] = useState(false);
+  const [partners, setPartners] = useState<PartnerEntry[]>([]);
+  const [partnersLoading, setPartnersLoading] = useState(false);
 
   const { t, language, setLanguage } = useLanguage();
-  const plan = profile?.subscription_plan || 'free';
+  const plan = profile?.subscription_plan || 'trial';
   const limits = PLAN_LIMITS[effectivePlan];
-
-  const PLAN_DESCRIPTIONS: Record<SubscriptionPlan, string[]> = {
-    free: [t('pdFree1'), t('pdFree2'), t('pdFree3')],
-    hobby: [t('pdHobby1'), t('pdHobby2'), t('pdHobby3')],
-    standard: [t('pdStandard1'), t('pdStandard2'), t('pdStandard3'), t('pdStandard4')],
-    professional: [
-      t('pdPro1'),
-      t('pdPro2'),
-      t('pdPro3'),
-      t('pdPro4'),
-      t('pdPro5'),
-      t('pdPro6'),
-    ],
-  };
+  const isPro = effectivePlan === 'pro';
+  const isTrial = effectivePlan === 'trial';
 
   const loadData = useCallback(async () => {
     const { count } = await supabase
@@ -91,6 +86,17 @@ export default function ProfileScreen() {
       .order('created_at', { ascending: false });
     setVipList((data || []) as VipEntry[]);
     setVipLoading(false);
+  }, []);
+
+  const loadPartners = useCallback(async () => {
+    setPartnersLoading(true);
+    const { data } = await supabase
+      .from('elite_breeders')
+      .select('id, breeder_name, county, email, is_featured')
+      .order('is_featured', { ascending: false })
+      .order('breeder_name', { ascending: true });
+    setPartners((data || []) as PartnerEntry[]);
+    setPartnersLoading(false);
   }, []);
 
   const loadAdminNotifications = useCallback(async () => {
@@ -111,6 +117,7 @@ export default function ProfileScreen() {
     if (isAdmin) {
       loadVipList();
       loadAdminNotifications();
+      loadPartners();
     }
     if (profile?.email) {
       supabase
@@ -122,7 +129,7 @@ export default function ProfileScreen() {
           if (data?.language) setLanguageLocked(true);
         });
     }
-  }, [loadData, isAdmin, loadVipList, loadAdminNotifications, profile?.email]);
+  }, [loadData, isAdmin, loadVipList, loadAdminNotifications, loadPartners, profile?.email]);
 
   const handleUpgrade = async (newPlan: SubscriptionPlan) => {
     if (newPlan === plan) return;
@@ -183,7 +190,7 @@ export default function ProfileScreen() {
       .from('vip_list')
       .insert({
         email: newVipEmail.trim().toLowerCase(),
-        plan: newVipPlan,
+        plan: 'pro',
         reason: newVipReason.trim(),
       });
     if (error) {
@@ -193,9 +200,8 @@ export default function ProfileScreen() {
     setShowVipModal(false);
     setNewVipEmail('');
     setNewVipReason('');
-    setNewVipPlan('professional');
     loadVipList();
-    Alert.alert(t('success'), `${newVipEmail.trim()} ${t('vipAdded')} ${PLAN_LABELS[newVipPlan]}.`);
+    Alert.alert(t('success'), `${newVipEmail.trim()} ${t('vipAdded')} ${PLAN_LABELS.pro}.`);
   };
 
   const handleRemoveVip = (entry: VipEntry) => {
@@ -216,10 +222,37 @@ export default function ProfileScreen() {
     );
   };
 
+  const handleRemovePartner = (partner: PartnerEntry) => {
+    Alert.alert(
+      t('deletePartner'),
+      `${t('deletePartnerConfirm')} ${partner.breeder_name}?`,
+      [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('delete'),
+          style: 'destructive',
+          onPress: async () => {
+            await supabase.from('elite_breeders').delete().eq('id', partner.id);
+            loadPartners();
+          },
+        },
+      ]
+    );
+  };
+
+  const proFeatures = [
+    t('pdPro1'),
+    t('pdPro2'),
+    t('pdPro3'),
+    t('pdPro4'),
+    t('pdPro5'),
+    t('pdPro6'),
+  ];
+
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('profileTitle')} subtitle={profile?.breeder_name || ''} />
+        <ScreenHeader title={t('profileTitle')} subtitle={profile?.breeder_name || ''} showBack />
 
         <View style={styles.profileCard}>
           <View style={styles.profileIcon}>
@@ -241,7 +274,7 @@ export default function ProfileScreen() {
         {isVip && !isAdmin && (
           <View style={styles.vipBadge}>
             <Star color={Colors.white} size={16} />
-            <Text style={styles.vipText}>{t('vipMember')} {PLAN_LABELS[vipPlan || 'professional']}</Text>
+            <Text style={styles.vipText}>{t('vipMember')} {PLAN_LABELS.pro}</Text>
           </View>
         )}
 
@@ -249,7 +282,7 @@ export default function ProfileScreen() {
           <Text style={styles.usageTitle}>{t('currentUsage')}</Text>
           <View style={styles.usageRow}>
             <View style={styles.usageItem}>
-              <Text style={styles.usageValue}>{pigeonCount} / {limits.pigeonLimit === 999999 ? '∞' : limits.pigeonLimit}</Text>
+              <Text style={styles.usageValue}>{pigeonCount} / ∞</Text>
               <Text style={styles.usageLabel}>{t('pigeonsLabel')}</Text>
             </View>
           </View>
@@ -262,68 +295,72 @@ export default function ProfileScreen() {
           )}
         </Text>
 
-        <View style={styles.plansList}>
-          {PLAN_ORDER.filter(p => p !== 'free').map((p) => {
-            const isCurrent = effectivePlan === p;
-            const isLower = PLAN_ORDER.indexOf(p) < PLAN_ORDER.indexOf(effectivePlan);
-            return (
-              <View
-                key={p}
-                style={[
-                  styles.planCard,
-                  isCurrent && styles.planCardCurrent,
-                  p === 'professional' && styles.planCardPro,
-                ]}
-              >
-                <View style={styles.planHeader}>
-                  <View>
-                    <Text style={styles.planName}>{PLAN_LABELS[p]}</Text>
-                    <Text style={styles.planPrice}>{PLAN_PRICES[p]}</Text>
-                  </View>
-                  {isCurrent && (
-                    <View style={styles.currentBadge}>
-                      <Text style={styles.currentBadgeText}>{t('current')}</Text>
-                    </View>
-                  )}
-                  {p === 'professional' && !isCurrent && (
-                    <View style={styles.proBadge}>
-                      <Crown color={Colors.white} size={14} />
-                    </View>
-                  )}
-                </View>
-
-                <View style={styles.planFeatures}>
-                  {PLAN_DESCRIPTIONS[p].map((feat, i) => (
-                    <View key={i} style={styles.featureRow}>
-                      <Check color={Colors.royalBlue} size={16} />
-                      <Text style={styles.featureText}>{feat}</Text>
-                    </View>
-                  ))}
-                </View>
-
-                {!isCurrent && !isLower && (
-                  <TouchableOpacity
-                    style={[styles.upgradeButton, upgrading && styles.upgradeButtonDisabled]}
-                    onPress={() => handleUpgrade(p)}
-                    disabled={upgrading}
-                  >
-                    {upgrading ? (
-                      <ActivityIndicator color={Colors.white} size="small" />
-                    ) : (
-                      <Text style={styles.upgradeButtonText}>
-                        {p === 'professional' ? t('unlockAll') : t('switchPlan')}
-                      </Text>
-                    )}
-                  </TouchableOpacity>
-                )}
-                {isLower && (
-                  <View style={styles.downgradeNote}>
-                    <Text style={styles.downgradeText}>{t('lowerPlan')}</Text>
-                  </View>
-                )}
+        {/* Trial plan card */}
+        <View style={[styles.planCard, isTrial && styles.planCardCurrent]}>
+          <View style={styles.planHeader}>
+            <View>
+              <Text style={styles.planName}>{PLAN_LABELS.trial}</Text>
+              <Text style={styles.planPrice}>{PLAN_PRICES.trial}</Text>
+            </View>
+            {isTrial && (
+              <View style={styles.currentBadge}>
+                <Text style={styles.currentBadgeText}>{t('current')}</Text>
               </View>
-            );
-          })}
+            )}
+          </View>
+          <View style={styles.planFeatures}>
+            {proFeatures.map((feat, i) => (
+              <View key={i} style={styles.featureRow}>
+                <Check color={Colors.royalBlue} size={16} />
+                <Text style={styles.featureText}>{feat}</Text>
+              </View>
+            ))}
+          </View>
+          <View style={styles.trialInfoBox}>
+            <Text style={styles.trialInfoText}>
+              {t('trialInfo')}
+            </Text>
+          </View>
+        </View>
+
+        {/* Pro plan card */}
+        <View style={[styles.planCard, styles.planCardPro, isPro && styles.planCardProCurrent]}>
+          <View style={styles.planHeader}>
+            <View>
+              <Text style={[styles.planName, isPro && styles.planNameLight]}>{PLAN_LABELS.pro}</Text>
+              <Text style={[styles.planPrice, isPro && styles.planPriceLight]}>{PLAN_PRICES.pro}</Text>
+            </View>
+            {isPro ? (
+              <View style={styles.currentBadgeLight}>
+                <Text style={styles.currentBadgeLightText}>{t('current')}</Text>
+              </View>
+            ) : (
+              <View style={styles.proBadge}>
+                <Crown color={Colors.white} size={14} />
+              </View>
+            )}
+          </View>
+          <View style={styles.planFeatures}>
+            {proFeatures.map((feat, i) => (
+              <View key={i} style={styles.featureRow}>
+                <Check color={Colors.white} size={16} />
+                <Text style={[styles.featureText, isPro && styles.featureTextLight]}>{feat}</Text>
+              </View>
+            ))}
+          </View>
+          {!isPro && (
+            <TouchableOpacity
+              style={[styles.upgradeButton, upgrading && styles.upgradeButtonDisabled]}
+              onPress={() => handleUpgrade('pro')}
+              disabled={upgrading}
+            >
+              {upgrading ? (
+                <ActivityIndicator color={Colors.royalBlueDark} size="small" />
+              ) : (
+                <Text style={styles.upgradeButtonTextDark}>{t('unlockPro')}</Text>
+              )}
+            </TouchableOpacity>
+          )}
         </View>
 
         {isAdmin && (
@@ -429,13 +466,55 @@ export default function ProfileScreen() {
                     <View style={styles.vipCardInfo}>
                       <Text style={styles.vipCardEmail}>{entry.email}</Text>
                       <Text style={styles.vipCardPlan}>
-                        {PLAN_LABELS[entry.plan]}
+                        {PLAN_LABELS.pro}
                         {entry.reason ? ` · ${entry.reason}` : ''}
                       </Text>
                     </View>
                     <TouchableOpacity
                       style={styles.vipRemoveBtn}
                       onPress={() => handleRemoveVip(entry)}
+                    >
+                      <Trash2 color={Colors.error} size={18} />
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {isAdmin && (
+          <View style={styles.vipSection}>
+            <View style={styles.vipSectionHeader}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.vipSectionTitle}>{t('partnersListTitle')}</Text>
+                <Text style={styles.vipSectionSubtitle}>
+                  {t('partnersListSub')}
+                </Text>
+              </View>
+              <View style={styles.partnerIconBox}>
+                <Users color={Colors.royalBlue} size={20} />
+              </View>
+            </View>
+
+            {partnersLoading ? (
+              <ActivityIndicator color={Colors.royalBlue} size="small" style={{ marginVertical: 20 }} />
+            ) : partners.length === 0 ? (
+              <Text style={styles.vipEmptyText}>{t('partnersNoData')}</Text>
+            ) : (
+              <View style={styles.vipListContainer}>
+                {partners.map((partner) => (
+                  <View key={partner.id} style={styles.vipCard}>
+                    <View style={styles.vipCardInfo}>
+                      <Text style={styles.vipCardEmail}>{partner.breeder_name}</Text>
+                      <Text style={styles.vipCardPlan}>
+                        {partner.county || '—'}
+                        {partner.is_featured ? ` · ${t('featured')}` : ''}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      style={styles.vipRemoveBtn}
+                      onPress={() => handleRemovePartner(partner)}
                     >
                       <Trash2 color={Colors.error} size={18} />
                     </TouchableOpacity>
@@ -510,23 +589,6 @@ export default function ProfileScreen() {
                 autoCapitalize="none"
                 autoCorrect={false}
               />
-            </View>
-
-            <View style={styles.modalField}>
-              <Text style={styles.modalLabel}>{t('premiumPlan')}</Text>
-              <View style={styles.planSelector}>
-                {(['hobby', 'standard', 'professional'] as SubscriptionPlan[]).map((p) => (
-                  <TouchableOpacity
-                    key={p}
-                    style={[styles.planOption, newVipPlan === p && styles.planOptionSelected]}
-                    onPress={() => setNewVipPlan(p)}
-                  >
-                    <Text style={[styles.planOptionText, newVipPlan === p && styles.planOptionTextSelected]}>
-                      {PLAN_LABELS[p]}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
             </View>
 
             <View style={styles.modalField}>
@@ -655,20 +717,19 @@ const styles = StyleSheet.create({
   usageItem: { flex: 1, alignItems: 'center' },
   usageValue: { fontFamily: 'Inter-Bold', fontSize: 22, color: Colors.royalBlue },
   usageLabel: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary, marginTop: 4 },
-  usageDivider: { width: 1, height: 40, backgroundColor: Colors.border },
   sectionTitle: {
     fontFamily: 'Inter-Bold',
     fontSize: 20,
     color: Colors.text,
     marginBottom: 16,
   },
-  plansList: { gap: 14 },
   planCard: {
     backgroundColor: Colors.white,
     borderRadius: 18,
     padding: 20,
     borderWidth: 1,
     borderColor: Colors.borderLight,
+    marginBottom: 14,
   },
   planCardCurrent: {
     borderColor: Colors.royalBlue,
@@ -678,6 +739,10 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.royalBlue,
     borderColor: Colors.royalBlue,
   },
+  planCardProCurrent: {
+    borderWidth: 2,
+    borderColor: Colors.gold,
+  },
   planHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -685,7 +750,9 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   planName: { fontFamily: 'Inter-Bold', fontSize: 20, color: Colors.text },
+  planNameLight: { color: Colors.white },
   planPrice: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textSecondary, marginTop: 2 },
+  planPriceLight: { color: 'rgba(255,255,255,0.8)' },
   currentBadge: {
     backgroundColor: Colors.royalBluePale,
     paddingHorizontal: 12,
@@ -693,6 +760,13 @@ const styles = StyleSheet.create({
     borderRadius: 10,
   },
   currentBadgeText: { fontFamily: 'Inter-SemiBold', fontSize: 12, color: Colors.royalBlue },
+  currentBadgeLight: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 10,
+  },
+  currentBadgeLightText: { fontFamily: 'Inter-SemiBold', fontSize: 12, color: Colors.white },
   proBadge: {
     width: 32,
     height: 32,
@@ -704,21 +778,22 @@ const styles = StyleSheet.create({
   planFeatures: { gap: 8, marginBottom: 16 },
   featureRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   featureText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.text, flex: 1 },
+  featureTextLight: { color: 'rgba(255,255,255,0.95)' },
+  trialInfoBox: {
+    backgroundColor: Colors.goldPale,
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  trialInfoText: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.goldDark },
   upgradeButton: {
-    backgroundColor: Colors.royalBlue,
+    backgroundColor: Colors.gold,
     borderRadius: 14,
     paddingVertical: 14,
     alignItems: 'center',
   },
   upgradeButtonDisabled: { opacity: 0.6 },
-  upgradeButtonText: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.white },
-  downgradeNote: {
-    backgroundColor: Colors.neutral100,
-    borderRadius: 12,
-    paddingVertical: 12,
-    alignItems: 'center',
-  },
-  downgradeText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.textSecondary },
+  upgradeButtonTextDark: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.royalBlueDark },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -812,6 +887,14 @@ const styles = StyleSheet.create({
     height: 40,
     borderRadius: 12,
     backgroundColor: Colors.royalBlue,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  partnerIconBox: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.royalBluePale,
     justifyContent: 'center',
     alignItems: 'center',
   },

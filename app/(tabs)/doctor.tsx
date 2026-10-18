@@ -25,12 +25,13 @@ import { PLAN_LIMITS, GAME_STYLE_LABELS, GameStyle } from '@/lib/types';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import type { Language } from '@/lib/i18n';
 import { findGeneticsAnswer } from '@/lib/genetics';
+import { findVetAnswer, appendRegistryNote } from '@/lib/vet-knowledge';
 import {
   Stethoscope, Camera, MessageCircle, Send, Globe, Plus, X, Trash2,
   Pencil, AlertCircle, Shield, Syringe, Calendar, Bell, ChevronRight,
   Microscope, Activity, Crown, Eye, ClipboardList, ScanLine,
   AlertTriangle, ShieldAlert, Pill, Clock, Beaker, RefreshCw,
-  Info, CheckCircle2, Image as ImageIcon,
+  Info, CheckCircle2, Image as ImageIcon, Bird, Egg, Trophy,
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -109,13 +110,13 @@ export default function DoctorScreen() {
   const router = useRouter();
   const [section, setSection] = useState<Section>('consult');
 
-  const plan = profile?.subscription_plan || 'free';
+  const plan = profile?.subscription_plan || 'trial';
   const limits = PLAN_LIMITS[plan];
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('doctorTitle')} subtitle={t('doctorSub')} />
+        <ScreenHeader title={t('doctorTitle')} subtitle={t('doctorSub')} showBack />
 
         <View style={styles.sectionToggle}>
           <TouchableOpacity
@@ -273,6 +274,11 @@ function ConsultSection({ t, language, router }: { t: (k: any) => string; langua
     }
 
     if (isWebSearchQuery(question)) {
+      const vetAnswer = findVetAnswer(question, msgLang);
+      if (vetAnswer) {
+        const hasLocalData = contextData && contextData.length > 0 && !contextData.includes('Nu am găsit') && !contextData.includes('No specific');
+        return vetAnswer + appendRegistryNote(!!hasLocalData, msgLang);
+      }
       const noDataRo = 'Nu am găsit date specifice.';
       const noDataEn = "No specific data found.";
       const cleanContext = (contextData && contextData !== noDataRo && contextData !== noDataEn) ? contextData : '';
@@ -281,6 +287,12 @@ function ConsultSection({ t, language, router }: { t: (k: any) => string; langua
 
     const geneticsAnswer = findGeneticsAnswer(question, msgLang);
     if (geneticsAnswer) return geneticsAnswer;
+
+    const vetAnswer = findVetAnswer(question, msgLang);
+    if (vetAnswer) {
+      const hasLocalData = contextData && contextData.length > 0 && !contextData.includes('Nu am găsit') && !contextData.includes('No specific');
+      return vetAnswer + appendRegistryNote(!!hasLocalData, msgLang);
+    }
 
     if (contextData) {
       return msgLang === 'en'
@@ -731,24 +743,41 @@ const diagStyles = StyleSheet.create({
 
 function RegistrySection({ t, language, limits, router, isAdmin }: { t: (k: any) => string; language: string; limits: any; router: any; isAdmin: boolean }) {
   const [treatments, setTreatments] = useState<TreatmentRecord[]>([]);
+  const [pigeons, setPigeons] = useState<any[]>([]);
+  const [nests, setNests] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTreatment, setEditingTreatment] = useState<TreatmentRecord | null>(null);
   const [form, setForm] = useState({ pigeon_ring: '', disease: '', symptoms: '', treatment: '', admin_date: '', booster_date: '' });
   const [saving, setSaving] = useState(false);
+  const [regSubTab, setRegSubTab] = useState<'treatments' | 'pigeons' | 'nests'>('treatments');
 
   const hasAccess = isAdmin || limits.hasTreatments;
 
   const loadTreatments = useCallback(async () => {
     const { data } = await supabase.from('treatments').select('*').order('admin_date', { ascending: false });
     setTreatments((data || []) as TreatmentRecord[]);
-    setLoading(false);
+  }, []);
+
+  const loadPigeons = useCallback(async () => {
+    const { data } = await supabase.from('pigeons').select('id, ring_series, sex, color, year, is_champion, photo_url, status').order('created_at', { ascending: false }).limit(50);
+    setPigeons(data || []);
+  }, []);
+
+  const loadNests = useCallback(async () => {
+    const { data } = await supabase.from('nests').select('id, nest_id, male_ring, female_ring, pairing_date, hatching_date, chick_count, is_foster').order('pairing_date', { ascending: false }).limit(50);
+    setNests(data || []);
   }, []);
 
   useEffect(() => {
-    if (hasAccess) loadTreatments();
-    else setLoading(false);
-  }, [loadTreatments, hasAccess]);
+    if (hasAccess) {
+      loadTreatments().finally(() => setLoading(false));
+      loadPigeons();
+      loadNests();
+    } else {
+      setLoading(false);
+    }
+  }, [loadTreatments, loadPigeons, loadNests, hasAccess]);
 
   const preventionItems: PreventionItem[] = [
     { key: 'salmonella', name: t('doctorPrevSalmonella'), desc: t('doctorPrevSalmonellaDesc'), schedule: '2x/an', icon: <Shield color={Colors.white} size={20} />, color: Colors.royalBlue, bg: Colors.royalBluePale },
@@ -809,6 +838,107 @@ function RegistrySection({ t, language, limits, router, isAdmin }: { t: (k: any)
 
   return (
     <View>
+      <View style={styles.regSubToggle}>
+        <TouchableOpacity
+          style={[styles.regSubBtn, regSubTab === 'treatments' && styles.regSubBtnActive]}
+          onPress={() => setRegSubTab('treatments')}
+        >
+          <Stethoscope color={regSubTab === 'treatments' ? Colors.white : Colors.royalBlue} size={16} />
+          <Text style={[styles.regSubText, regSubTab === 'treatments' && styles.regSubTextActive]}>{t('doctorRegTreatments')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.regSubBtn, regSubTab === 'pigeons' && styles.regSubBtnActive]}
+          onPress={() => setRegSubTab('pigeons')}
+        >
+          <Bird color={regSubTab === 'pigeons' ? Colors.white : Colors.royalBlue} size={16} />
+          <Text style={[styles.regSubText, regSubTab === 'pigeons' && styles.regSubTextActive]}>{t('doctorRegPigeons')}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.regSubBtn, regSubTab === 'nests' && styles.regSubBtnActive]}
+          onPress={() => setRegSubTab('nests')}
+        >
+          <Egg color={regSubTab === 'nests' ? Colors.white : Colors.royalBlue} size={16} />
+          <Text style={[styles.regSubText, regSubTab === 'nests' && styles.regSubTextActive]}>{t('doctorRegNests')}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {regSubTab === 'pigeons' ? (
+        <View>
+          <View style={styles.treatmentsHeader}>
+            <Text style={styles.sectionTitle}>{t('pigeonRegistry')}</Text>
+            <TouchableOpacity style={styles.addBtn} onPress={() => router.push('/(tabs)/pigeons')}>
+              <ChevronRight color={Colors.royalBlue} size={18} />
+              <Text style={styles.addBtnText}>{t('doctorViewFull')}</Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 20 }} />
+          ) : pigeons.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Bird color={Colors.textLight} size={40} />
+              <Text style={styles.emptyTitle}>{t('noPigeons')}</Text>
+              <Text style={styles.emptySub}>{t('noPigeonsSub')}</Text>
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {pigeons.map(p => (
+                <View key={p.id} style={styles.regMiniCard}>
+                  <View style={styles.regMiniIconBox}>
+                    {p.photo_url ? (
+                      <Image source={{ uri: p.photo_url }} style={styles.regMiniPhoto} resizeMode="cover" />
+                    ) : (
+                      <Bird color={Colors.royalBlueLight} size={18} />
+                    )}
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.regMiniRing}>{p.ring_series}</Text>
+                    <Text style={styles.regMiniInfo}>{p.sex === 'Mascul' ? t('male') : t('female')} · {p.color || '—'} · {p.year || '—'}</Text>
+                  </View>
+                  {p.is_champion && (
+                    <View style={styles.regMiniChampion}>
+                      <Trophy color={Colors.gold} size={12} />
+                    </View>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      ) : regSubTab === 'nests' ? (
+        <View>
+          <View style={styles.treatmentsHeader}>
+            <Text style={styles.sectionTitle}>{t('bioCalendar')}</Text>
+            <TouchableOpacity style={styles.addBtn} onPress={() => router.push('/(tabs)/nests')}>
+              <ChevronRight color={Colors.royalBlue} size={18} />
+              <Text style={styles.addBtnText}>{t('doctorViewFull')}</Text>
+            </TouchableOpacity>
+          </View>
+          {loading ? (
+            <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 20 }} />
+          ) : nests.length === 0 ? (
+            <View style={styles.emptyState}>
+              <Egg color={Colors.textLight} size={40} />
+              <Text style={styles.emptyTitle}>{t('noNests')}</Text>
+              <Text style={styles.emptySub}>{t('noNestsSub')}</Text>
+            </View>
+          ) : (
+            <View style={{ gap: 8 }}>
+              {nests.map(n => (
+                <View key={n.id} style={styles.regMiniCard}>
+                  <View style={[styles.regMiniIconBox, n.is_foster && styles.regMiniIconFoster]}>
+                    <Egg color={Colors.royalBlueLight} size={18} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.regMiniRing}>{n.nest_id}{n.is_foster ? ' (Foster)' : ''}</Text>
+                    <Text style={styles.regMiniInfo}>{n.male_ring} × {n.female_ring} · {t('chicks')}: {n.chick_count || 0}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      ) : (
+        <View>
       {(upcomingAlerts.length > 0 || overdueAlerts.length > 0) && (
         <View style={styles.alertsContainer}>
           <Text style={styles.alertsTitle}>{t('doctorAlerts')}</Text>
@@ -952,6 +1082,8 @@ function RegistrySection({ t, language, limits, router, isAdmin }: { t: (k: any)
           </ScrollView>
         </View>
       </Modal>
+      </View>
+    )}
     </View>
   );
 }
@@ -1060,4 +1192,16 @@ const styles = StyleSheet.create({
   textArea: { minHeight: 70, textAlignVertical: 'top' },
   saveButton: { backgroundColor: Colors.royalBlue, borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 8, ...Shadows.button },
   saveButtonText: { fontFamily: 'Inter-Bold', fontSize: 17, color: Colors.white },
+  regSubToggle: { flexDirection: 'row', gap: 6, marginBottom: 16 },
+  regSubBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingVertical: 10, borderRadius: BorderRadius.md, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.borderLight },
+  regSubBtnActive: { backgroundColor: Colors.royalBlue, borderColor: Colors.royalBlue },
+  regSubText: { fontFamily: 'Inter-SemiBold', fontSize: 11, color: Colors.royalBlue },
+  regSubTextActive: { color: Colors.white },
+  regMiniCard: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: Colors.white, borderRadius: BorderRadius.md, padding: 12, borderWidth: 1, borderColor: Colors.borderLight },
+  regMiniIconBox: { width: 42, height: 42, borderRadius: 12, backgroundColor: Colors.royalBluePale, justifyContent: 'center', alignItems: 'center', overflow: 'hidden' as const },
+  regMiniIconFoster: { backgroundColor: Colors.goldPale },
+  regMiniPhoto: { width: 42, height: 42, borderRadius: 12 },
+  regMiniRing: { fontFamily: 'Inter-Bold', fontSize: 14, color: Colors.text },
+  regMiniInfo: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  regMiniChampion: { width: 26, height: 26, borderRadius: 8, backgroundColor: Colors.goldPale, justifyContent: 'center', alignItems: 'center' },
 });

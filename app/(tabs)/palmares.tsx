@@ -17,7 +17,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { ArrowLeft, Plus, Trash2, X, Trophy, Award, Medal } from 'lucide-react-native';
+import { ArrowLeft, Plus, Trash2, X, Trophy, Award, Medal, BadgeCheck } from 'lucide-react-native';
 import type { PigeonPalmares } from '@/lib/types';
 
 export default function PalmaresScreen() {
@@ -140,6 +140,24 @@ export default function PalmaresScreen() {
                   <Text style={styles.resultDetails}>
                     {r.year || '—'}{r.distance_km ? ` · ${r.distance_km} km` : ''}
                   </Text>
+                  {r.birds_released != null && (
+                    <Text style={styles.resultDetails}>
+                      {t('fedBirdsReleased')}: {r.birds_released}
+                    </Text>
+                  )}
+                  {r.fci_coefficient != null && (
+                    <Text style={styles.fciText}>
+                      {t('fedFCICoeff')}: {Number(r.fci_coefficient).toFixed(2)}
+                    </Text>
+                  )}
+                  {r.is_official_import && r.federation && (
+                    <View style={styles.fedImportRow}>
+                      <View style={styles.fedImportBadge}>
+                        <BadgeCheck color={Colors.goldDark} size={12} />
+                        <Text style={styles.fedImportText}>{r.federation} · {t('fedOfficial')}</Text>
+                      </View>
+                    </View>
+                  )}
                   {r.position <= 3 && (
                     <View style={[styles.medalBadge, { backgroundColor: getMedalBg(r.position) }]}>
                       <Medal color={getMedalColor(r.position)} size={12} />
@@ -351,4 +369,27 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   saveButtonText: { fontFamily: 'Inter-Bold', fontSize: 17, color: Colors.white },
+  fciText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 12,
+    color: Colors.royalBlue,
+  },
+  fedImportRow: {
+    marginTop: 4,
+  },
+  fedImportBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: Colors.goldLight,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    alignSelf: 'flex-start',
+  },
+  fedImportText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: Colors.goldDark,
+  },
 });

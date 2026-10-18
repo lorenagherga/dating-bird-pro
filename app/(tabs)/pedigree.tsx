@@ -50,7 +50,7 @@ export default function PedigreeScreen() {
   const [loading, setLoading] = useState(true);
   const [palmaresMap, setPalmaresMap] = useState<Record<string, PalmaresEntry[]>>({});
 
-  const plan = profile?.subscription_plan || 'free';
+  const plan = profile?.subscription_plan || 'trial';
   const limits = PLAN_LIMITS[plan];
 
   const fetchPigeon = async (pid: string): Promise<PigeonRecord | null> => {
@@ -120,7 +120,7 @@ export default function PedigreeScreen() {
   useEffect(() => {
     if (pigeon) {
       setAncestryLoading(true);
-      buildAncestry(pigeon, 10).then((tree) => {
+      buildAncestry(pigeon, 8).then((tree) => {
         setAncestry(tree);
         loadAllPalmares(tree).finally(() => setAncestryLoading(false));
       });
@@ -181,7 +181,7 @@ export default function PedigreeScreen() {
 
     const GEN_LABELS: Record<number, string> = {
       1: t('gen1'), 2: t('gen2'), 3: t('gen3'),
-      4: 'Gen 4', 5: 'Gen 5', 6: 'Gen 6', 7: 'Gen 7', 8: 'Gen 8', 9: 'Gen 9', 10: 'Gen 10',
+      4: 'Gen 4', 5: 'Gen 5', 6: 'Gen 6', 7: 'Gen 7', 8: 'Gen 8',
     };
 
     return (
@@ -246,7 +246,7 @@ export default function PedigreeScreen() {
               </View>
             )}
             {gen === 0 && <Text style={styles.rootLabel}>{t('subject')}</Text>}
-            {gen >= 1 && gen <= 10 && <Text style={styles.genLabel}>{GEN_LABELS[gen]}</Text>}
+            {gen >= 1 && gen <= 8 && <Text style={styles.genLabel}>{GEN_LABELS[gen]}</Text>}
           </View>
         </View>
         <View style={{ gap: 3 }}>

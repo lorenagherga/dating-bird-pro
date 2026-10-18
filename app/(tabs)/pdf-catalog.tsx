@@ -40,7 +40,7 @@ export default function PdfCatalogScreen() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [generating, setGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
-  const hasAccess = isAdmin || profile?.subscription_plan === 'professional' || profile?.subscription_plan === 'standard' || profile?.subscription_plan === 'hobby';
+  const hasAccess = isAdmin || profile?.subscription_plan === 'trial' || profile?.subscription_plan === 'pro';
 
   useEffect(() => {
     supabase
@@ -110,7 +110,7 @@ export default function PdfCatalogScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('pdfTitle')} subtitle={t('pdfSub')} />
+        <ScreenHeader title={t('pdfTitle')} subtitle={t('pdfSub')} showBack />
 
         <View style={styles.selectionBar}>
           <Text style={styles.selectionCount}>

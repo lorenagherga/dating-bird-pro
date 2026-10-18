@@ -20,6 +20,7 @@ import { Send, MessageCircle, Globe } from 'lucide-react-native';
 import { useLanguage } from '@/lib/language-context';
 import type { Language } from '@/lib/i18n';
 import { findGeneticsAnswer } from '@/lib/genetics';
+import { findVetAnswer, appendRegistryNote } from '@/lib/vet-knowledge';
 
 interface ChatMsg {
   id: string;
@@ -384,8 +385,15 @@ export default function AssistantScreen() {
         : `Nu ai cuiburi înregistrate momentan.`;
     }
 
-    // For web-searchable topics, call the edge function with loft context
+    // For web-searchable topics, first try the built-in vet knowledge base
     if (isWebSearchQuery(question)) {
+      const vetAnswer = findVetAnswer(question, msgLang);
+      if (vetAnswer) {
+        const noDataRo = 'Nu am găsit date specifice pentru această întrebare în registrele utilizatorului.';
+        const noDataEn = "I could not find specific data for this question in the user's records.";
+        const hasLocalData = !!(contextData && contextData !== noDataRo && contextData !== noDataEn);
+        return vetAnswer + appendRegistryNote(hasLocalData, msgLang);
+      }
       const noDataRo = 'Nu am găsit date specifice pentru această întrebare în registrele utilizatorului.';
       const noDataEn = "I could not find specific data for this question in the user's records.";
       const cleanContext = (contextData && contextData !== noDataRo && contextData !== noDataEn) ? contextData : '';
@@ -396,6 +404,15 @@ export default function AssistantScreen() {
     const geneticsAnswer = findGeneticsAnswer(question, msgLang);
     if (geneticsAnswer) {
       return geneticsAnswer;
+    }
+
+    // Try the built-in vet knowledge base for any remaining disease/symptom questions
+    const vetAnswer = findVetAnswer(question, msgLang);
+    if (vetAnswer) {
+      const noDataRo = 'Nu am găsit date specifice pentru această întrebare în registrele utilizatorului.';
+      const noDataEn = "I could not find specific data for this question in the user's records.";
+      const hasLocalData = !!(contextData && contextData !== noDataRo && contextData !== noDataEn);
+      return vetAnswer + appendRegistryNote(hasLocalData, msgLang);
     }
 
     // Default response with context

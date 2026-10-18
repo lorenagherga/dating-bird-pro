@@ -11,7 +11,7 @@ export default function RacesScreen() {
 
   return (
     <View style={styles.container}>
-      <ScreenHeader title={t('racesTitle')} subtitle={profile?.breeder_name || ''} />
+      <ScreenHeader title={t('racesTitle')} subtitle={profile?.breeder_name || ''} showBack />
       <View style={styles.content}>
         <View style={styles.iconCircle}>
           <Trophy color={Colors.royalBlue} size={36} />

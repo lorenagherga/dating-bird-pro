@@ -39,7 +39,7 @@ export default function CopilotScreen() {
   const [simulating, setSimulating] = useState(false);
   const [simData, setSimData] = useState<SimResult | null>(null);
   const [progressAnim] = useState(new Animated.Value(0));
-  const hasAccess = isAdmin || profile?.subscription_plan === 'professional' || profile?.subscription_plan === 'standard' || profile?.subscription_plan === 'hobby';
+  const hasAccess = isAdmin || profile?.subscription_plan === 'trial' || profile?.subscription_plan === 'pro';
 
   interface SimResult {
     speed: number;
@@ -172,7 +172,7 @@ export default function CopilotScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('copilotTitle')} subtitle={t('copilotSub')} />
+        <ScreenHeader title={t('copilotTitle')} subtitle={t('copilotSub')} showBack />
 
         <View style={styles.inputCard}>
           <View style={styles.inputRow}>

@@ -286,7 +286,7 @@ export default function ScanPedigreeScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('scanPedTitle')} subtitle={t('scanPedSub')} />
+        <ScreenHeader title={t('scanPedTitle')} subtitle={t('scanPedSub')} showBack />
 
         {!photoUri && !cameraVisible && (
           <View style={styles.introContainer}>

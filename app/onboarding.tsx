@@ -8,64 +8,57 @@ import {
   ActivityIndicator,
   Platform,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
-import { Colors, Shadows } from '@/lib/theme';
-import type { PigeonType } from '@/lib/types';
-import { Bird, Trophy, Sparkles, Check, ArrowRight } from 'lucide-react-native';
+import { Colors, Shadows, BorderRadius } from '@/lib/theme';
+import type { PigeonCategory } from '@/lib/types';
+import { Bird, Trophy, Sparkles, Check, ArrowRight, Zap, Award, Crown } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-interface OptionCard {
-  type: PigeonType;
-  title: string;
-  description: string;
-  icon: typeof Bird;
-  features: string[];
+interface CategoryOption {
+  key: PigeonCategory;
+  titleKey: string;
+  descKey: string;
+  icon: typeof Trophy;
 }
 
-const ro = {
-  welcome: 'Dacă ești aici, sigur iubești porumbeii!',
-  title: 'Ce fel de porumbei aveți?',
-  subtitle: 'Selectează categoria pentru a personaliza aplicația',
-  continue: 'Continuă',
-  hint: 'Poți modifica această opțiune mai târziu din secțiunea Profil',
-  racing: { title: 'Porumbei Voiajori', desc: 'Sport · Concursuri de distanță', features: ['Management concursuri', 'Clasări și coeficienți FCI', 'Meteo traseu', 'Registru complet'] },
-  fancy: { title: 'Porumbei de Agrement', desc: 'Ornament · Zbor-Joc (Tippleri, Jucători)', features: ['Frumusețe și pedigree', 'Linii de sânge / joc', 'Tratamente și sănătate', 'Asistent AI specializat'] },
-  both: { title: 'Ambele categorii', desc: 'Voiajori + Agrement · Toate modulele', features: ['Absolut toate funcțiile', 'Organizare separată pe linii', 'Concursuri + Frumusețe', 'Maximum de flexibilitate'] },
-};
-
-const en = {
-  welcome: 'If you\'re here, you surely love pigeons!',
-  title: 'What kind of pigeons do you have?',
-  subtitle: 'Select a category to personalize the app',
-  continue: 'Continue',
-  hint: 'You can change this option later in the Profile section',
-  racing: { title: 'Racing Pigeons', desc: 'Sport · Distance racing', features: ['Race management', 'FCI rankings & coefficients', 'Route weather', 'Full registry'] },
-  fancy: { title: 'Fancy Pigeons', desc: 'Ornament · Flying (Tipplers, Rollers)', features: ['Beauty & pedigree', 'Bloodlines / flying style', 'Treatments & health', 'Specialized AI assistant'] },
-  both: { title: 'Both categories', desc: 'Racing + Fancy · All modules', features: ['Absolutely all features', 'Separate organization by line', 'Racing + Beauty', 'Maximum flexibility'] },
-};
-
 export default function OnboardingScreen() {
-  const { setPigeonType } = useAuth();
-  const { language } = useLanguage();
+  const { setPigeonCategories } = useAuth();
+  const { t } = useLanguage();
   const router = useRouter();
-  const [selected, setSelected] = useState<PigeonType | null>(null);
+  const [selected, setSelected] = useState<Set<PigeonCategory>>(new Set());
   const [saving, setSaving] = useState(false);
 
-  const L = language === 'ro' ? ro : en;
-
-  const options: OptionCard[] = [
-    { type: 'racing', title: L.racing.title, description: L.racing.desc, icon: Trophy, features: L.racing.features },
-    { type: 'fancy', title: L.fancy.title, description: L.fancy.desc, icon: Sparkles, features: L.fancy.features },
-    { type: 'both', title: L.both.title, description: L.both.desc, icon: Bird, features: L.both.features },
+  const options: CategoryOption[] = [
+    { key: 'racing_speed', titleKey: 'onbSpeed', descKey: 'onbSpeedDesc', icon: Zap },
+    { key: 'racing_endurance', titleKey: 'onbEndurance', descKey: 'onbEnduranceDesc', icon: Trophy },
+    { key: 'fancy_exhibition', titleKey: 'onbExhibition', descKey: 'onbExhibitionDesc', icon: Crown },
+    { key: 'fancy_flying', titleKey: 'onbFlying', descKey: 'onbFlyingDesc', icon: Sparkles },
   ];
 
+  const toggleCategory = (key: PigeonCategory) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) {
+        next.delete(key);
+      } else {
+        next.add(key);
+      }
+      return next;
+    });
+  };
+
   const handleConfirm = async () => {
-    if (!selected) return;
+    if (selected.size === 0) {
+      Alert.alert(t('error'), t('onbSelectAtLeast'));
+      return;
+    }
     setSaving(true);
-    await setPigeonType(selected);
+    const categories = Array.from(selected);
+    await setPigeonCategories(categories);
     setSaving(false);
     router.replace('/(tabs)');
   };
@@ -83,20 +76,20 @@ export default function OnboardingScreen() {
             <View style={styles.logoCircle}>
               <Bird color={Colors.white} size={32} />
             </View>
-            <Text style={styles.welcomeText}>{L.welcome}</Text>
-            <Text style={styles.title}>{L.title}</Text>
-            <Text style={styles.subtitle}>{L.subtitle}</Text>
+            <Text style={styles.welcomeText}>{t('onbWelcome').split('\n').map((line, i) => <Text key={i}>{i > 0 && '\n'}{line}</Text>)}</Text>
+            <Text style={styles.title}>{t('onbTitle')}</Text>
+            <Text style={styles.subtitle}>{t('onbSubtitle')}</Text>
           </View>
 
           <View style={styles.optionsContainer}>
             {options.map((option) => {
-              const isSelected = selected === option.type;
+              const isSelected = selected.has(option.key);
               const Icon = option.icon;
               return (
                 <TouchableOpacity
-                  key={option.type}
+                  key={option.key}
                   style={[styles.optionCard, isSelected && styles.optionCardSelected]}
-                  onPress={() => setSelected(option.type)}
+                  onPress={() => toggleCategory(option.key)}
                   activeOpacity={0.75}
                 >
                   <View style={styles.optionHeader}>
@@ -107,46 +100,66 @@ export default function OnboardingScreen() {
                       />
                     </View>
                     <View style={styles.optionTextContainer}>
-                      <Text style={styles.optionTitle}>{option.title}</Text>
-                      <Text style={styles.optionDescription}>{option.description}</Text>
+                      <Text style={styles.optionTitle}>{t(option.titleKey as any)}</Text>
+                      <Text style={styles.optionDescription}>{t(option.descKey as any)}</Text>
                     </View>
-                    <View style={[styles.radioButton, isSelected && styles.radioButtonSelected]}>
+                    <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                       {isSelected && <Check color={Colors.white} size={16} />}
                     </View>
                   </View>
-
-                  {isSelected && (
-                    <View style={styles.featuresContainer}>
-                      {option.features.map((feat, i) => (
-                        <View key={i} style={styles.featureRow}>
-                          <View style={styles.featureDot} />
-                          <Text style={styles.featureText}>{feat}</Text>
-                        </View>
-                      ))}
-                    </View>
-                  )}
                 </TouchableOpacity>
               );
             })}
           </View>
 
+          {/* Personalization preview */}
+          {selected.size > 0 && (
+            <View style={styles.previewBox}>
+              <Text style={styles.previewTitle}>{t('onbModRaces')}</Text>
+              {(selected.has('racing_speed') || selected.has('racing_endurance')) && (
+                <>
+                  <View style={styles.previewRow}>
+                    <View style={styles.previewDot} />
+                    <Text style={styles.previewText}>{t('onbModRaces')} — {t('onbModRacesSub')}</Text>
+                  </View>
+                  <View style={styles.previewRow}>
+                    <View style={styles.previewDot} />
+                    <Text style={styles.previewText}>{t('onbModFci')} — {t('onbModFciSub')}</Text>
+                  </View>
+                </>
+              )}
+              {selected.has('fancy_exhibition') && (
+                <View style={styles.previewRow}>
+                  <View style={styles.previewDot} />
+                  <Text style={styles.previewText}>{t('onbModStandards')} — {t('onbModStandardsSub')}</Text>
+                </View>
+              )}
+              {selected.has('fancy_flying') && (
+                <View style={styles.previewRow}>
+                  <View style={styles.previewDot} />
+                  <Text style={styles.previewText}>{t('onbModBeauty')} — {t('onbModBeautySub')}</Text>
+                </View>
+              )}
+            </View>
+          )}
+
           <TouchableOpacity
-            style={[styles.confirmButton, !selected && styles.confirmButtonDisabled, saving && styles.confirmButtonDisabled]}
+            style={[styles.confirmButton, selected.size === 0 && styles.confirmButtonDisabled, saving && styles.confirmButtonDisabled]}
             onPress={handleConfirm}
-            disabled={!selected || saving}
+            disabled={selected.size === 0 || saving}
             activeOpacity={0.8}
           >
             {saving ? (
               <ActivityIndicator color={Colors.royalBlueDark} />
             ) : (
               <>
-                <Text style={styles.confirmButtonText}>{L.continue}</Text>
+                <Text style={styles.confirmButtonText}>{t('onbContinue')}</Text>
                 <ArrowRight color={Colors.royalBlueDark} size={20} />
               </>
             )}
           </TouchableOpacity>
 
-          <Text style={styles.hint}>{L.hint}</Text>
+          <Text style={styles.hint}>{t('onbHint')}</Text>
         </ScrollView>
       </SafeAreaView>
     </LinearGradient>
@@ -154,18 +167,9 @@ export default function OnboardingScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollContent: {
-    padding: 24,
-    paddingBottom: 40,
-  },
-  header: {
-    alignItems: 'center',
-    marginTop: Platform.OS === 'web' ? 20 : 40,
-    marginBottom: 36,
-  },
+  container: { flex: 1 },
+  scrollContent: { padding: 24, paddingBottom: 40 },
+  header: { alignItems: 'center', marginTop: Platform.OS === 'web' ? 20 : 40, marginBottom: 32 },
   logoCircle: {
     width: 72,
     height: 72,
@@ -177,14 +181,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 20,
   },
-  title: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 26,
-    color: Colors.white,
-    textAlign: 'center',
-    marginBottom: 8,
-    letterSpacing: -0.5,
-  },
   welcomeText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 18,
@@ -193,19 +189,25 @@ const styles = StyleSheet.create({
     marginBottom: 10,
     fontStyle: 'italic',
   },
+  title: {
+    fontFamily: 'Inter-Bold',
+    fontSize: 24,
+    color: Colors.white,
+    textAlign: 'center',
+    marginBottom: 8,
+    letterSpacing: -0.5,
+  },
   subtitle: {
     fontFamily: 'Inter-Regular',
     fontSize: 15,
     color: 'rgba(255,255,255,0.65)',
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
-  optionsContainer: {
-    gap: 14,
-    marginBottom: 28,
-  },
+  optionsContainer: { gap: 14, marginBottom: 20 },
   optionCard: {
     backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: 18,
+    borderRadius: BorderRadius.lg,
     padding: 20,
     borderWidth: 1.5,
     borderColor: 'rgba(255,255,255,0.15)',
@@ -214,11 +216,7 @@ const styles = StyleSheet.create({
     borderColor: Colors.gold,
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
-  optionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-  },
+  optionHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   optionIconBox: {
     width: 52,
     height: 52,
@@ -227,15 +225,11 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  optionIconBoxSelected: {
-    backgroundColor: Colors.gold,
-  },
-  optionTextContainer: {
-    flex: 1,
-  },
+  optionIconBoxSelected: { backgroundColor: Colors.gold },
+  optionTextContainer: { flex: 1 },
   optionTitle: {
     fontFamily: 'Inter-Bold',
-    fontSize: 17,
+    fontSize: 16,
     color: Colors.white,
     marginBottom: 2,
   },
@@ -244,41 +238,40 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: 'rgba(255,255,255,0.6)',
   },
-  radioButton: {
+  checkbox: {
     width: 26,
     height: 26,
-    borderRadius: 13,
+    borderRadius: 7,
     borderWidth: 2,
     borderColor: 'rgba(255,255,255,0.3)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  radioButtonSelected: {
+  checkboxSelected: {
     borderColor: Colors.gold,
     backgroundColor: Colors.gold,
   },
-  featuresContainer: {
-    marginTop: 16,
-    paddingTop: 16,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.12)',
-    gap: 8,
+  previewBox: {
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    borderRadius: 14,
+    padding: 16,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
   },
-  featureRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  featureDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: Colors.gold,
-  },
-  featureText: {
-    fontFamily: 'Inter-Regular',
+  previewTitle: {
+    fontFamily: 'Inter-Bold',
     fontSize: 14,
-    color: 'rgba(255,255,255,0.8)',
+    color: Colors.goldLight,
+    marginBottom: 10,
+  },
+  previewRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 6 },
+  previewDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Colors.gold },
+  previewText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.75)',
+    flex: 1,
   },
   confirmButton: {
     flexDirection: 'row',
@@ -291,9 +284,7 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     ...Shadows.button,
   },
-  confirmButtonDisabled: {
-    opacity: 0.4,
-  },
+  confirmButtonDisabled: { opacity: 0.4 },
   confirmButtonText: {
     fontFamily: 'Inter-Bold',
     fontSize: 17,

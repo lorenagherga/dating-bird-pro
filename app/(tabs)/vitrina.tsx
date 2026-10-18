@@ -172,7 +172,7 @@ export default function VitrinaScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        <ScreenHeader title={t('vitrinaTitle')} subtitle={t('vitrinaSub')} />
+        <ScreenHeader title={t('vitrinaTitle')} subtitle={t('vitrinaSub')} showBack />
 
         {loading ? (
           <ActivityIndicator size="large" color={Colors.gold} style={{ marginTop: 40 }} />
