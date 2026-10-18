@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "Dating Bird Pro",
-    "slug": "dating-bird-pro",
+    "name": "Pigeon Fan Pro",
+    "slug": "pigeon-fan-pro",
     "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "datingbirdpro",
+    "scheme": "pigeonfanpro",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.datingbirdpro.app"
+      "bundleIdentifier": "com.pigeonfanpro.app"
     },
     "android": {
-      "package": "com.datingbirdpro.app",
+      "package": "com.pigeonfanpro.app",
       "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",

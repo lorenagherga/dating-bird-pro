@@ -1,8 +1,8 @@
-# Ghid construire APK și AAB pentru Android — Dating Bird Pro
+# Ghid construire APK și AAB pentru Android — Pigeon Fan Pro
 
 ## Privire generală
 
-Aplicația **Dating Bird Pro** folosește Expo (React Native) și poate fi împachetată în fișiere native Android (.apk și .aab) folosind **EAS Build** (Expo Application Services). Build-urile se fac în cloud pe serverele Expo — nu ai nevoie de Android Studio instalat pe calculator.
+Aplicația **Pigeon Fan Pro** folosește Expo (React Native) și poate fi împachetată în fișiere native Android (.apk și .aab) folosind **EAS Build** (Expo Application Services). Build-urile se fac în cloud pe serverele Expo — nu ai nevoie de Android Studio instalat pe calculator.
 
 ---
 
@@ -20,7 +20,7 @@ Aplicația **Dating Bird Pro** folosește Expo (React Native) și poate fi împa
 ## Pasul 1: Descarcă proiectul din Bolt
 
 - Apasă butonul **Download** din panoul Bolt și salvează arhiva proiectului pe calculator
-- Extrage arhiva într-un folder (ex: `DatingBirdPro`)
+- Extrage arhiva într-un folder (ex: `PigeonFanPro`)
 - Deschide folderul în VS Code sau Cursor
 
 ## Pasul 2: Instalează dependențele
@@ -54,7 +54,7 @@ eas build --platform android --profile preview
 1. Descarcă fișierul `.apk` pe telefon (prin browser, email, Google Drive sau cablu USB)
 2. Pe telefon, activează **"Instalare din surse necunoscute"** din: Setări > Securitate > Surse necunoscute
 3. Deschide fișierul `.apk` din managerul de fișiere și apasă **"Instalează"**
-4. Aplicația **Dating Bird Pro** va apărea în lista de aplicații cu pictograma albastru-aurie
+4. Aplicația **Pigeon Fan Pro** va apărea în lista de aplicații cu pictograma albastru-aurie
 
 ## Pasul 5: Construiește fișierul .aab (pentru Google Play Store)
 
@@ -69,7 +69,7 @@ eas build --platform android --profile production
 ### Publicare în Google Play Console (12 testeri)
 
 1. Conectează-te la https://play.google.com/console
-2. Creează o aplicație nouă cu numele **Dating Bird Pro** și pachetul `com.datingbirdpro.app`
+2. Creează o aplicație nouă cu numele **Pigeon Fan Pro** și pachetul `com.pigeonfanpro.app`
 3. Mergi la **Testare internă** (Internal Testing) > **Creează lansare**
 4. Încarcă fișierul `.aab` generat
 5. Adaugă emailurile celor 12 testeri în secțiunea **Listă de testeri**
@@ -91,8 +91,8 @@ Acesta va trimite automat `.aab`-ul în Google Play Console pe track-ul de testa
 
 | Proprietate | Valoare |
 |---|---|
-| Nume afișat | Dating Bird Pro |
-| Package ID | `com.datingbirdpro.app` |
+| Nume afișat | Pigeon Fan Pro |
+| Package ID | `com.pigeonfanpro.app` |
 | Version | 1.0.0 |
 | Version Code | 1 |
 
