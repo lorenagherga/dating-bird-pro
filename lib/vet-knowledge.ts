@@ -13,7 +13,7 @@ export interface VetDisease {
 export const VET_KNOWLEDGE_BASE: VetDisease[] = [
   {
     keywords: ['tricomone', 'trichomon', 'tricomoneză', 'trichomoniasis', 'gălbene', 'galbene', 'cheaguri', 'goră', 'gura'],
-    name: 'Tricomoneză (Canker)',
+    name: 'Tricomonoza (Canker)',
     nameEn: 'Trichomoniasis (Canker)',
     symptoms: 'Cheaguri galbene/albicioase în gură, pe cerul gurii, esofag sau gușă. Dificultăți la înghițire, salivă excesivă, pierdere în greutate, penaj zbârlit, letsargie. În formele avansate, pasărea nu se mai poate hrăni și moare de inaniție.',
     causes: 'Protozoarul Trichomonas gallinae, transmis prin apă contaminată, hrănirea puiilor de către părinți sau contact direct. Afectează în special puii tineri.',
@@ -76,7 +76,7 @@ export const VET_KNOWLEDGE_BASE: VetDisease[] = [
     keywords: ['variol', 'pox', 'poxviro', 'bășic', 'basic', 'coaj', 'merg', 'picior', 'leziuni', 'negi'],
     name: 'Poxviroză (Variola aviară)',
     nameEn: 'Poxvirosis (Avian Pox)',
-    symptoms: 'Două forme: 1) Formă cutanată — bășici/coji pe pielea ne-penată (cioc, ochi, picioare, cloacă). 2) Formă difteroidă — membrane galbene în gură și esofag, similar cu tricomoneza. Pasărea are dificultăți la hrănire și respirat.',
+    symptoms: 'Două forme: 1) Formă cutanată — bășici/coji pe pielea ne-penată (cioc, ochi, picioare, cloacă). 2) Formă difteroidă — membrane galbene în gură și esofag, similar cu tricomonoza. Pasărea are dificultăți la hrănire și respirat.',
     causes: 'Poxvirus aviar, transmis prin insecte (țânțari, muște) sau contact direct cu leziuni. Mai frecvent toamna și vara când insectele sunt active.',
     treatment: 'Nu există tratament specific antiviral. Tratament suportiv: vitamine A+E pentru refacerea țesuturilor, dezinfectare locală a leziunilor, antibiotice doar pentru infecții secundare bacteriene.',
     substances: [
