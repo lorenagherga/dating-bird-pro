@@ -12,8 +12,6 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
-  Animated,
-  Dimensions,
   Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -27,16 +25,13 @@ import type { Language } from '@/lib/i18n';
 import { findGeneticsAnswer } from '@/lib/genetics';
 import { findVetAnswer, appendRegistryNote } from '@/lib/vet-knowledge';
 import {
-  Stethoscope, Camera, MessageCircle, Send, Globe, Plus, X, Trash2,
+  Stethoscope, MessageCircle, Send, Globe, Plus, X, Trash2,
   Pencil, AlertCircle, Shield, Syringe, Calendar, Bell, ChevronRight,
-  Microscope, Activity, Crown, Eye, ClipboardList, ScanLine,
-  AlertTriangle, ShieldAlert, Pill, Clock, Beaker, RefreshCw,
-  Info, CheckCircle2, Image as ImageIcon, Bird, Egg, Trophy,
+  Microscope, Crown, ClipboardList,
+  Info, CheckCircle2, Bird, Egg, Trophy,
 } from 'lucide-react-native';
-import * as ImagePicker from 'expo-image-picker';
-import { CameraView, useCameraPermissions } from 'expo-camera';
 
-type Section = 'consult' | 'diagnostic' | 'registry';
+type Section = 'consult' | 'registry';
 
 interface ChatMsg {
   id: string;
@@ -129,15 +124,6 @@ export default function DoctorScreen() {
             </Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.toggleBtn, section === 'diagnostic' && styles.toggleBtnActive]}
-            onPress={() => setSection('diagnostic')}
-          >
-            <Eye color={section === 'diagnostic' ? Colors.white : Colors.royalBlue} size={18} />
-            <Text style={[styles.toggleBtnText, section === 'diagnostic' && styles.toggleBtnTextActive]}>
-              {t('diagTitle')}
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
             style={[styles.toggleBtn, section === 'registry' && styles.toggleBtnActive]}
             onPress={() => setSection('registry')}
           >
@@ -150,8 +136,6 @@ export default function DoctorScreen() {
 
         {section === 'consult' ? (
           <ConsultSection t={t} language={language} router={router} />
-        ) : section === 'diagnostic' ? (
-          <DiagnosticSection t={t} />
         ) : (
           <RegistrySection t={t} language={language} limits={limits} router={router} isAdmin={isAdmin} />
         )}
@@ -257,7 +241,7 @@ function ConsultSection({ t, language, router }: { t: (k: any) => string; langua
         const tr = treatments[0] as any;
         return msgLang === 'en'
           ? `Last trichomoniasis treatment: ${tr.admin_date} for ${tr.pigeon_ring}. Treatment: ${tr.treatment || 'undocumented'}.`
-          : `Ultimul tratament tricomoneză: ${tr.admin_date} pentru ${tr.pigeon_ring}. Tratament: ${tr.treatment || 'nedocumentat'}.`;
+          : `Ultimul tratament tricomonoza: ${tr.admin_date} pentru ${tr.pigeon_ring}. Tratament: ${tr.treatment || 'nedocumentat'}.`;
       }
     }
     if (lowerQ.includes('vaccin') || lowerQ.includes('rapel') || lowerQ.includes('vaccine') || lowerQ.includes('booster')) {
@@ -387,359 +371,6 @@ function ConsultSection({ t, language, router }: { t: (k: any) => string; langua
     </View>
   );
 }
-
-function DiagnosticSection({ t }: { t: (k: any) => string }) {
-  const [permission, requestPermission] = useCameraPermissions();
-  const [cameraVisible, setCameraVisible] = useState(false);
-  const [facing, setFacing] = useState<'front' | 'back'>('back');
-  const [photoUri, setPhotoUri] = useState<string | null>(null);
-  const [scanning, setScanning] = useState(false);
-  const [result, setResult] = useState<DiagnosticResult | null>(null);
-  const cameraRef = useRef<any>(null);
-  const scanAnim = useRef(new Animated.Value(0)).current;
-  const { width: screenWidth } = Dimensions.get('window');
-  const scanBoxSize = screenWidth * 0.7;
-
-  interface DiagnosticResult {
-    disease: string;
-    probability: number;
-    riskLevel: 'low' | 'medium' | 'high';
-    isolation: string;
-    treatments: { substance: string; duration: string; dosage: string }[];
-  }
-
-  const SIMULATED_RESULTS: DiagnosticResult[] = [
-    { disease: 'Tricomoneză', probability: 87, riskLevel: 'high', isolation: 'Izolează pasărea imediat timp de 7-10 zile. Evită contactul cu restul efectivului.', treatments: [{ substance: 'Ronidazol 10%', duration: '5-7 zile consecutive', dosage: '1g per 2 litri apă' }, { substance: 'Metronidazol', duration: '5 zile', dosage: '25mg/kg greutate vie, în apă' }] },
-    { disease: 'Coccidioză', probability: 72, riskLevel: 'medium', isolation: 'Izolează pasărea timp de 5-7 zile. Dezinfectează cușca cu amoniac 10%.', treatments: [{ substance: 'Toltrazuril 2,5%', duration: '2 zile, repetă după 7 zile', dosage: '1ml per litru apă' }, { substance: 'Amprolium 20%', duration: '5-7 zile', dosage: '1g per litru apă' }] },
-    { disease: 'Ornitologie / Micoză respiratorie', probability: 64, riskLevel: 'medium', isolation: 'Izolează în boxă separată cu ventilație bună. Temperată 18-22°C.', treatments: [{ substance: 'Doxiciclină 5%', duration: '7-10 zile consecutive', dosage: '1g per litru apă' }, { substance: 'Itraconazol', duration: '14 zile', dosage: '10mg/kg greutate, în hrană' }] },
-    { disease: 'Poxviroză (Variolă aviară)', probability: 55, riskLevel: 'medium', isolation: 'Izolare strictă 14-21 zile. Vaccinare restul efectivului de urgență.', treatments: [{ substance: 'Iod 2% (aplicare locală)', duration: '5-7 zile, de 2x/zi', dosage: 'Aplicare pe leziuni cu tampon' }, { substance: 'Vitamina A + E', duration: '10 zile', dosage: 'Supliment în apă, suport imunitar' }] },
-    { disease: 'Salmoneloză (Paratifoidă)', probability: 80, riskLevel: 'high', isolation: 'Izolare strictă minimum 21 zile. Testarea întregului efectiv.', treatments: [{ substance: 'Enrofloxacină 10%', duration: '10-14 zile consecutive', dosage: '1ml per 2 litri apă' }, { substance: 'Trimetoprim + Sulfametoxazol', duration: '7 zile', dosage: '1 comprimat per litru apă' }] },
-  ];
-
-  useEffect(() => {
-    if (scanning) {
-      const loop = Animated.loop(
-        Animated.sequence([
-          Animated.timing(scanAnim, { toValue: 1, duration: 800, useNativeDriver: true }),
-          Animated.timing(scanAnim, { toValue: 0, duration: 800, useNativeDriver: true }),
-        ])
-      );
-      loop.start();
-      const timer = setTimeout(() => {
-        setScanning(false);
-        setResult(SIMULATED_RESULTS[Math.floor(Math.random() * SIMULATED_RESULTS.length)]);
-        loop.stop();
-      }, 2800);
-      return () => { clearTimeout(timer); loop.stop(); };
-    }
-  }, [scanning]);
-
-  const takePhoto = async () => {
-    if (Platform.OS === 'web') {
-      pickFromGallery();
-      return;
-    }
-    if (!permission?.granted) {
-      const res = await requestPermission();
-      if (!res.granted) {
-        Alert.alert(t('error'), 'Permisiune cameră refuzată.');
-        return;
-      }
-    }
-    setCameraVisible(true);
-  };
-
-  const captureFromCamera = async () => {
-    if (cameraRef.current) {
-      const photo = await cameraRef.current.takePicture({ quality: 0.8 });
-      setPhotoUri(photo.uri);
-      setCameraVisible(false);
-      setResult(null);
-    }
-  };
-
-  const pickFromGallery = async () => {
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
-    });
-    if (!res.canceled && res.assets[0]) {
-      setPhotoUri(res.assets[0].uri);
-      setResult(null);
-    }
-  };
-
-  const startScan = () => {
-    if (!photoUri) return;
-    setResult(null);
-    setScanning(true);
-  };
-
-  const resetAll = () => {
-    setPhotoUri(null);
-    setResult(null);
-    setScanning(false);
-  };
-
-  const riskColor = (level: 'low' | 'medium' | 'high'): string => {
-    if (level === 'low') return Colors.success;
-    if (level === 'medium') return Colors.warning;
-    return Colors.error;
-  };
-
-  const riskLabel = (level: 'low' | 'medium' | 'high'): string => {
-    if (level === 'low') return t('diagLowRisk');
-    if (level === 'medium') return t('diagMediumRisk');
-    return t('diagHighRisk');
-  };
-
-  const scanLineTop = scanAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, scanBoxSize - 2],
-  });
-
-  if (cameraVisible) {
-    return (
-      <View style={diagStyles.cameraContainer}>
-        <CameraView ref={cameraRef} style={diagStyles.cameraView} facing={facing}>
-          <View style={diagStyles.cameraOverlay}>
-            <View style={[diagStyles.scanBox, { width: scanBoxSize, height: scanBoxSize }]} />
-            <View style={diagStyles.cameraControls}>
-              <TouchableOpacity style={diagStyles.captureBtn} onPress={captureFromCamera}>
-                <View style={diagStyles.captureInner} />
-              </TouchableOpacity>
-              <TouchableOpacity style={diagStyles.flipBtn} onPress={() => setFacing(f => f === 'back' ? 'front' : 'back')}>
-                <RefreshCw color={Colors.white} size={22} />
-              </TouchableOpacity>
-              <TouchableOpacity style={diagStyles.closeCameraBtn} onPress={() => setCameraVisible(false)}>
-                <X color={Colors.white} size={24} />
-              </TouchableOpacity>
-            </View>
-          </View>
-        </CameraView>
-      </View>
-    );
-  }
-
-  return (
-    <View>
-      {!photoUri ? (
-        <View style={diagStyles.introContainer}>
-          <View style={diagStyles.scanIconCircle}>
-            <Eye color={Colors.gold} size={48} />
-          </View>
-          <Text style={diagStyles.introTitle}>{t('diagTitle')}</Text>
-          <Text style={diagStyles.introSubtitle}>{t('diagNoResultSub')}</Text>
-
-          <View style={diagStyles.instructionsCard}>
-            <Text style={diagStyles.instructionsTitle}>{t('diagInstructions')}</Text>
-            <View style={diagStyles.instructionRow}>
-              <View style={diagStyles.instructionDot}><Text style={diagStyles.instructionDotText}>1</Text></View>
-              <Text style={diagStyles.instructionText}>{t('diagInstr1')}</Text>
-            </View>
-            <View style={diagStyles.instructionRow}>
-              <View style={diagStyles.instructionDot}><Text style={diagStyles.instructionDotText}>2</Text></View>
-              <Text style={diagStyles.instructionText}>{t('diagInstr2')}</Text>
-            </View>
-            <View style={diagStyles.instructionRow}>
-              <View style={diagStyles.instructionDot}><Text style={diagStyles.instructionDotText}>3</Text></View>
-              <Text style={diagStyles.instructionText}>{t('diagInstr3')}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity style={diagStyles.primaryBtn} onPress={takePhoto}>
-            <Camera color={Colors.white} size={22} />
-            <Text style={diagStyles.primaryBtnText}>{t('diagCamera')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={diagStyles.secondaryBtn} onPress={pickFromGallery}>
-            <ImageIcon color={Colors.royalBlue} size={22} />
-            <Text style={diagStyles.secondaryBtnText}>{t('diagUpload')}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : (
-        <View>
-          <View style={diagStyles.photoCard}>
-            {scanning ? (
-              <View style={diagStyles.scanningOverlay}>
-                <View style={[diagStyles.scanBoxLarge, { width: scanBoxSize, height: scanBoxSize }]}>
-                  <Animated.View style={[diagStyles.scanLine, { transform: [{ translateY: scanLineTop }] }]} />
-                </View>
-                <View style={diagStyles.scanningInfo}>
-                  <Activity color={Colors.gold} size={28} />
-                  <Text style={diagStyles.scanningText}>{t('diagAnalyzing')}</Text>
-                </View>
-              </View>
-            ) : photoUri ? (
-              <Image source={{ uri: photoUri }} style={diagStyles.photoFrame} resizeMode="cover" />
-            ) : (
-              <View style={diagStyles.photoFrame}>
-                <Camera color={Colors.textLight} size={40} />
-                <Text style={diagStyles.photoPlaceholderText}>Imagine încărcată</Text>
-              </View>
-            )}
-          </View>
-
-          {!scanning && !result && (
-            <TouchableOpacity style={diagStyles.primaryBtn} onPress={startScan}>
-              <ScanLine color={Colors.white} size={22} />
-              <Text style={diagStyles.primaryBtnText}>{t('diagScan')}</Text>
-            </TouchableOpacity>
-          )}
-
-          {result && (
-            <View style={diagStyles.resultsContainer}>
-              <View style={diagStyles.resultsHeader}>
-                <View style={diagStyles.resultsIconBox}>
-                  <Stethoscope color={Colors.royalBlue} size={24} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={diagStyles.resultsTitle}>{t('diagResults')}</Text>
-                  <Text style={diagStyles.resultsSub}>{t('diagSuggested')}</Text>
-                </View>
-                <View style={[diagStyles.riskBadge, { backgroundColor: riskColor(result.riskLevel) + '20', borderColor: riskColor(result.riskLevel) }]}>
-                  <Text style={[diagStyles.riskBadgeText, { color: riskColor(result.riskLevel) }]}>
-                    {riskLabel(result.riskLevel)}
-                  </Text>
-                </View>
-              </View>
-
-              <View style={diagStyles.resultCard}>
-                <View style={diagStyles.resultRow}>
-                  <View style={diagStyles.resultIconBox}>
-                    <ShieldAlert color={Colors.royalBlue} size={20} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={diagStyles.resultLabel}>{t('diagDisease')}</Text>
-                    <Text style={diagStyles.resultValue}>{result.disease}</Text>
-                  </View>
-                </View>
-
-                <View style={diagStyles.probBarContainer}>
-                  <View style={diagStyles.probBarRow}>
-                    <Text style={diagStyles.probBarLabel}>{t('diagProbability')}</Text>
-                    <Text style={diagStyles.probBarValue}>{result.probability}%</Text>
-                  </View>
-                  <View style={diagStyles.probBarBg}>
-                    <View style={[diagStyles.probBarFill, { width: `${result.probability}%`, backgroundColor: riskColor(result.riskLevel) }]} />
-                  </View>
-                </View>
-
-                <View style={diagStyles.resultRow}>
-                  <View style={diagStyles.resultIconBox}>
-                    <AlertTriangle color={Colors.warning} size={20} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={diagStyles.resultLabel}>{t('diagIsolation')}</Text>
-                    <Text style={diagStyles.resultValue}>{result.isolation}</Text>
-                  </View>
-                </View>
-              </View>
-
-              <View style={diagStyles.treatmentCard}>
-                <Text style={diagStyles.treatmentTitle}>{t('diagTreatment')}</Text>
-                {result.treatments.map((tr, i) => (
-                  <View key={i} style={diagStyles.treatmentItem}>
-                    <View style={diagStyles.treatmentItemHeader}>
-                      <Pill color={Colors.gold} size={18} />
-                      <Text style={diagStyles.treatmentSubstance}>{tr.substance}</Text>
-                    </View>
-                    <View style={diagStyles.treatmentDetails}>
-                      <View style={diagStyles.treatmentDetailRow}>
-                        <Clock color={Colors.textLight} size={14} />
-                        <Text style={diagStyles.treatmentDetailText}>{tr.duration}</Text>
-                      </View>
-                      <View style={diagStyles.treatmentDetailRow}>
-                        <Beaker color={Colors.textLight} size={14} />
-                        <Text style={diagStyles.treatmentDetailText}>{tr.dosage}</Text>
-                      </View>
-                    </View>
-                  </View>
-                ))}
-              </View>
-
-              <View style={diagStyles.warningCard}>
-                <Info color={Colors.warning} size={18} />
-                <Text style={diagStyles.warningText}>{t('diagWarningMsg')}</Text>
-              </View>
-
-              <View style={diagStyles.resultActions}>
-                <TouchableOpacity style={diagStyles.retakeBtn} onPress={resetAll}>
-                  <RefreshCw color={Colors.royalBlue} size={20} />
-                  <Text style={diagStyles.retakeBtnText}>{t('diagNewScan')}</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          )}
-        </View>
-      )}
-    </View>
-  );
-}
-
-const diagStyles = StyleSheet.create({
-  introContainer: { alignItems: 'center', gap: 16, marginTop: 20 },
-  scanIconCircle: { width: 90, height: 90, borderRadius: 45, backgroundColor: Colors.goldPale, borderWidth: 2, borderColor: Colors.gold, justifyContent: 'center', alignItems: 'center' },
-  introTitle: { fontFamily: 'Inter-Bold', fontSize: 22, color: Colors.text, marginTop: 4 },
-  introSubtitle: { fontFamily: 'Inter-Regular', fontSize: 15, color: Colors.textSecondary, textAlign: 'center', paddingHorizontal: 24 },
-  instructionsCard: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: 20, borderWidth: 1, borderColor: Colors.borderLight, width: '100%', gap: 14, marginTop: 8 },
-  instructionsTitle: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: Colors.text, marginBottom: 4 },
-  instructionRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  instructionDot: { width: 24, height: 24, borderRadius: 12, backgroundColor: Colors.royalBluePale, justifyContent: 'center', alignItems: 'center' },
-  instructionDotText: { fontFamily: 'Inter-Bold', fontSize: 13, color: Colors.royalBlue },
-  instructionText: { flex: 1, fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textSecondary },
-  primaryBtn: { flexDirection: 'row', backgroundColor: Colors.royalBlue, borderRadius: BorderRadius.md, paddingVertical: 16, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center', gap: 10, width: '100%', ...Shadows.button },
-  primaryBtnText: { fontFamily: 'Inter-Bold', fontSize: 17, color: Colors.white },
-  secondaryBtn: { flexDirection: 'row', backgroundColor: Colors.white, borderRadius: BorderRadius.md, paddingVertical: 14, paddingHorizontal: 32, alignItems: 'center', justifyContent: 'center', gap: 10, borderWidth: 1.5, borderColor: Colors.royalBlue, width: '100%' },
-  secondaryBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: Colors.royalBlue },
-  cameraContainer: { borderRadius: BorderRadius.lg, overflow: 'hidden' },
-  cameraView: { height: 400, borderRadius: BorderRadius.lg },
-  cameraOverlay: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  scanBox: { borderWidth: 2, borderColor: Colors.gold, borderRadius: 12, backgroundColor: 'transparent' },
-  cameraControls: { position: 'absolute', bottom: 20, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 30 },
-  captureBtn: { width: 64, height: 64, borderRadius: 32, backgroundColor: Colors.white, justifyContent: 'center', alignItems: 'center', borderWidth: 4, borderColor: Colors.gold },
-  captureInner: { width: 48, height: 48, borderRadius: 24, backgroundColor: Colors.royalBlue },
-  flipBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(15,42,107,0.7)', justifyContent: 'center', alignItems: 'center' },
-  closeCameraBtn: { position: 'absolute', top: 16, right: 16, width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
-  photoCard: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: 12, borderWidth: 1, borderColor: Colors.borderLight, marginBottom: 16 },
-  photoFrame: { height: 260, borderRadius: BorderRadius.md, overflow: 'hidden' },
-  photoPlaceholderText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textLight },
-  scanningOverlay: { height: 260, borderRadius: BorderRadius.md, overflow: 'hidden', backgroundColor: Colors.neutral900, justifyContent: 'center', alignItems: 'center' },
-  scanBoxLarge: { borderWidth: 2, borderColor: Colors.gold, borderRadius: 12, overflow: 'hidden' },
-  scanLine: { position: 'absolute', left: 0, right: 0, height: 3, backgroundColor: Colors.gold, shadowColor: Colors.gold, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.8, shadowRadius: 8, elevation: 4 },
-  scanningInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20 },
-  scanningText: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.goldLight },
-  resultsContainer: { gap: 14, marginTop: 8 },
-  resultsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  resultsIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: Colors.royalBluePale, justifyContent: 'center', alignItems: 'center' },
-  resultsTitle: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.text },
-  resultsSub: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
-  riskBadge: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, borderWidth: 1.5 },
-  riskBadgeText: { fontFamily: 'Inter-Bold', fontSize: 12 },
-  resultCard: { backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: 18, borderWidth: 1, borderColor: Colors.borderLight, gap: 16 },
-  resultRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
-  resultIconBox: { width: 36, height: 36, borderRadius: 10, backgroundColor: Colors.royalBluePale, justifyContent: 'center', alignItems: 'center' },
-  resultLabel: { fontFamily: 'Inter-Medium', fontSize: 12, color: Colors.textSecondary },
-  resultValue: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.text, marginTop: 2 },
-  probBarContainer: { gap: 8 },
-  probBarRow: { flexDirection: 'row', justifyContent: 'space-between' },
-  probBarLabel: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.textSecondary },
-  probBarValue: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.text },
-  probBarBg: { height: 10, backgroundColor: Colors.neutral100, borderRadius: 5, overflow: 'hidden' },
-  probBarFill: { height: '100%', borderRadius: 5 },
-  treatmentCard: { backgroundColor: Colors.goldPale, borderRadius: BorderRadius.lg, padding: 18, borderWidth: 1, borderColor: Colors.goldLight, gap: 14 },
-  treatmentTitle: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.goldDark },
-  treatmentItem: { backgroundColor: Colors.white, borderRadius: BorderRadius.md, padding: 14, gap: 10 },
-  treatmentItemHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  treatmentSubstance: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.text, flex: 1 },
-  treatmentDetails: { gap: 6, paddingLeft: 26 },
-  treatmentDetailRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  treatmentDetailText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.textSecondary },
-  warningCard: { flexDirection: 'row', gap: 10, backgroundColor: Colors.warningBg, borderRadius: BorderRadius.md, padding: 14, alignItems: 'flex-start' },
-  warningText: { flex: 1, fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.warning, lineHeight: 19 },
-  resultActions: { flexDirection: 'row', gap: 12, marginTop: 4 },
-  retakeBtn: { flex: 1, flexDirection: 'row', backgroundColor: Colors.white, borderRadius: BorderRadius.md, paddingVertical: 14, alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1.5, borderColor: Colors.royalBlue },
-  retakeBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.royalBlue },
-});
 
 function RegistrySection({ t, language, limits, router, isAdmin }: { t: (k: any) => string; language: string; limits: any; router: any; isAdmin: boolean }) {
   const [treatments, setTreatments] = useState<TreatmentRecord[]>([]);

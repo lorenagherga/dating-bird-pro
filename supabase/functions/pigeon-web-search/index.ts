@@ -210,7 +210,7 @@ function buildCombinedResponse(
   } else {
     // No web results — provide helpful general guidance instead of rigid "no results" message
     response += isRo
-      ? `Ca medic veterinar columbofil, te pot sfătui despre: hrănire, antrenamente, boli (tricomoneză, coriză, salmoneloză, coccidioză, variolă, paramixoviroză), reproducere, împerechere, cuiburi, vaccinări și tratamente. Reformulează întrebarea mai specific pentru un răspuns detaliat!`
+      ? `Ca medic veterinar columbofil, te pot sfătui despre: hrănire, antrenamente, boli (tricomonoza, coriză, salmoneloză, coccidioză, variolă, paramixoviroză), reproducere, împerechere, cuiburi, vaccinări și tratamente. Reformulează întrebarea mai specific pentru un răspuns detaliat!`
       : `As a pigeon veterinarian, I can advise on: feeding, training, diseases (trichomoniasis, coryza, salmonellosis, coccidiosis, pox, paramyxovirus), breeding, pairing, nests, vaccinations and treatments. Rephrase your question more specifically for a detailed answer!`;
   }
 

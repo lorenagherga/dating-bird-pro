@@ -343,11 +343,11 @@ export default function AssistantScreen() {
         const t = treatments[0] as any;
         return msgLang === 'en'
           ? `The last treatment for trichomoniasis was administered on ${t.admin_date} to pigeon ${t.pigeon_ring}. Treatment: ${t.treatment || 'undocumented'}. Booster: ${t.booster_date || 'unspecified'}.`
-          : `Ultimul tratament pentru tricomoneză a fost administrat pe ${t.admin_date} porumbelului ${t.pigeon_ring}. Tratament: ${t.treatment || 'nedocumentat'}. Rapel: ${t.booster_date || 'nespecificat'}.`;
+          : `Ultimul tratament pentru tricomonoza a fost administrat pe ${t.admin_date} porumbelului ${t.pigeon_ring}. Tratament: ${t.treatment || 'nedocumentat'}. Rapel: ${t.booster_date || 'nespecificat'}.`;
       }
       return msgLang === 'en'
         ? `I could not find any trichomoniasis treatment registered in your records.`
-        : `Nu am găsit niciun tratament pentru tricomoneză înregistrat în evidența ta.`;
+        : `Nu am găsit niciun tratament pentru tricomonoza înregistrat în evidența ta.`;
     }
 
     if (lowerQ.includes('vaccin') || lowerQ.includes('rapel') || lowerQ.includes('vaccine') || lowerQ.includes('booster')) {

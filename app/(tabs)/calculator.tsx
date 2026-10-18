@@ -328,8 +328,8 @@ export default function CalculatorScreen() {
       dGeno = inferGenotypeFromColor(pigeons.find(p => p.id === damId)?.color, 'female');
 
       // Calculate inbreeding from pedigree
-      const sireTree = await buildPedigreeTree(sireId, 4);
-      const damTree = await buildPedigreeTree(damId, 4);
+      const sireTree = await buildPedigreeTree(sireId, 8);
+      const damTree = await buildPedigreeTree(damId, 8);
       const coi = calculateInbreeding(sireTree, damTree);
       setInbreeding(coi);
     }
@@ -410,8 +410,8 @@ export default function CalculatorScreen() {
             />
             <Text style={styles.registryHint}>
               {lang === 'ro'
-                ? 'Selectează masculul și femela din registru. Aplicația va analiza pedigree-ul pe 4 generații pentru a calcula consangvinitatea.'
-                : 'Select male and female from registry. The app will analyze 4-generation pedigree to calculate inbreeding.'}
+                ? 'Selectează masculul și femela din registru. Aplicația va analiza pedigree-ul pe 8 generații pentru a calcula consangvinitatea.'
+                : 'Select male and female from registry. The app will analyze 8-generation pedigree to calculate inbreeding.'}
             </Text>
           </View>
         )}

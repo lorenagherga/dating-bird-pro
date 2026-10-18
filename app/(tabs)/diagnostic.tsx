@@ -46,7 +46,7 @@ interface DiagnosticResult {
 
 const SIMULATED_RESULTS: DiagnosticResult[] = [
   {
-    disease: 'Tricomoneză',
+    disease: 'Tricomonoza',
     probability: 87,
     riskLevel: 'high',
     isolation: 'Izolează pasărea imediat timp de 7-10 zile. Evită contactul cu restul efectivului.',
