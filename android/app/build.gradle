@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.datingbirdpro.app'
+    namespace 'com.pigeonfanpro.app'
     defaultConfig {
-        applicationId 'com.datingbirdpro.app'
+        applicationId 'com.pigeonfanpro.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
