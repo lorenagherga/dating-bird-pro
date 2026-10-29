@@ -14,6 +14,7 @@ import {
 import { useAuth } from '@/lib/auth-context';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabase';
 import { Colors } from '@/lib/theme';
+import { DB_SEX } from '@/lib/genetics-engine/registry';
 import { GAME_STYLE_LABELS, GameStyle } from '@/lib/types';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Send, MessageCircle, Globe } from 'lucide-react-native';
@@ -74,7 +75,7 @@ export default function AssistantScreen() {
       const { count } = await supabase
         .from('pigeons')
         .select('*', { count: 'exact', head: true })
-        .eq('sex', 'Mascul');
+        .eq('sex', DB_SEX.male);
       context += msgLang === 'en'
         ? `Total males in registry: ${count || 0}. `
         : `Număr total masculi în registru: ${count || 0}. `;
@@ -84,7 +85,7 @@ export default function AssistantScreen() {
       const { count } = await supabase
         .from('pigeons')
         .select('*', { count: 'exact', head: true })
-        .eq('sex', 'Femelă');
+        .eq('sex', DB_SEX.female);
       context += msgLang === 'en'
         ? `Total females in registry: ${count || 0}. `
         : `Număr total femele în registru: ${count || 0}. `;
@@ -247,7 +248,7 @@ export default function AssistantScreen() {
       const { count } = await supabase
         .from('pigeons')
         .select('*', { count: 'exact', head: true })
-        .eq('sex', 'Mascul');
+        .eq('sex', DB_SEX.male);
       return msgLang === 'en'
         ? `You have ${count || 0} males registered in the registry.`
         : `Ai ${count || 0} masculi înregistrați în registru.`;
@@ -257,7 +258,7 @@ export default function AssistantScreen() {
       const { count } = await supabase
         .from('pigeons')
         .select('*', { count: 'exact', head: true })
-        .eq('sex', 'Femelă');
+        .eq('sex', DB_SEX.female);
       return msgLang === 'en'
         ? `You have ${count || 0} females registered in the registry.`
         : `Ai ${count || 0} femele înregistrate în registru.`;
@@ -280,8 +281,8 @@ export default function AssistantScreen() {
           const isMaleQuery = lowerQ.includes('mascul') || lowerQ.includes('male');
           const isFemaleQuery = lowerQ.includes('femel') || lowerQ.includes('female');
           let query = supabase.from('pigeons').select('*').eq('game_style', style);
-          if (isMaleQuery) query = query.eq('sex', 'Mascul');
-          if (isFemaleQuery) query = query.eq('sex', 'Femelă');
+          if (isMaleQuery) query = query.eq('sex', DB_SEX.male);
+          if (isFemaleQuery) query = query.eq('sex', DB_SEX.female);
           const { data: pigeons, count } = await query.order('created_at', { ascending: false });
           const styleLabel = GAME_STYLE_LABELS[style];
           if (count && count > 0) {
@@ -321,7 +322,7 @@ export default function AssistantScreen() {
           for (const style of gameStyles) {
             const items = grouped[style];
             if (items && items.length > 0) {
-              result += `${GAME_STYLE_LABELS[style]} (${items.length}): ${items.map(p => `${p.ring_series}${p.sex === 'Mascul' ? ' ♂' : ' ♀'}`).join(', ')}\n`;
+              result += `${GAME_STYLE_LABELS[style]} (${items.length}): ${items.map(p => `${p.ring_series}${p.sex === DB_SEX.male ? ' ♂' : ' ♀'}`).join(', ')}\n`;
             }
           }
           return result.trim();

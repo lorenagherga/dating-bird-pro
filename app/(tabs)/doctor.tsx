@@ -20,6 +20,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { PLAN_LIMITS, GAME_STYLE_LABELS, GameStyle } from '@/lib/types';
+import { DB_SEX } from '@/lib/genetics-engine/registry';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import type { Language } from '@/lib/i18n';
 import { findGeneticsAnswer } from '@/lib/genetics';
@@ -224,11 +225,11 @@ function ConsultSection({ t, language, router }: { t: (k: any) => string; langua
     const lowerQ = question.toLowerCase();
 
     if (lowerQ.includes('câți masculi') || lowerQ.includes('cati masculi') || lowerQ.includes('how many males')) {
-      const { count } = await supabase.from('pigeons').select('*', { count: 'exact', head: true }).eq('sex', 'Mascul');
+      const { count } = await supabase.from('pigeons').select('*', { count: 'exact', head: true }).eq('sex', DB_SEX.male);
       return msgLang === 'en' ? `You have ${count || 0} males.` : `Ai ${count || 0} masculi.`;
     }
     if (lowerQ.includes('câte femele') || lowerQ.includes('cate femele') || lowerQ.includes('how many females')) {
-      const { count } = await supabase.from('pigeons').select('*', { count: 'exact', head: true }).eq('sex', 'Femelă');
+      const { count } = await supabase.from('pigeons').select('*', { count: 'exact', head: true }).eq('sex', DB_SEX.female);
       return msgLang === 'en' ? `You have ${count || 0} females.` : `Ai ${count || 0} femele.`;
     }
     if (lowerQ.includes('câți porumbei') || lowerQ.includes('cati porumbei') || lowerQ.includes('how many pigeons') || lowerQ.includes('total pigeons')) {
@@ -523,7 +524,7 @@ function RegistrySection({ t, language, limits, router, isAdmin }: { t: (k: any)
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.regMiniRing}>{p.ring_series}</Text>
-                    <Text style={styles.regMiniInfo}>{p.sex === 'Mascul' ? t('male') : t('female')} · {p.color || '—'} · {p.year || '—'}</Text>
+                    <Text style={styles.regMiniInfo}>{p.sex === DB_SEX.male ? t('male') : t('female')} · {p.color || '—'} · {p.year || '—'}</Text>
                   </View>
                   {p.is_champion && (
                     <View style={styles.regMiniChampion}>

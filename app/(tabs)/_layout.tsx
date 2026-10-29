@@ -117,11 +117,17 @@ export default function TabLayout() {
       <Tabs.Screen name="admin" options={hiddenScreenOptions} />
       <Tabs.Screen name="palmares" options={hiddenScreenOptions} />
       <Tabs.Screen name="pedigree" options={hiddenScreenOptions} />
+      <Tabs.Screen name="genotype" options={hiddenScreenOptions} />
       <Tabs.Screen name="auction-detail" options={hiddenScreenOptions} />
       <Tabs.Screen name="auction-create" options={hiddenScreenOptions} />
       <Tabs.Screen name="treatments" options={hiddenScreenOptions} />
       <Tabs.Screen name="assistant" options={hiddenScreenOptions} />
       <Tabs.Screen name="partner-detail" options={hiddenScreenOptions} />
+      <Tabs.Screen name="columbodroms" options={hiddenScreenOptions} />
+      <Tabs.Screen name="columbodrom-detail" options={hiddenScreenOptions} />
+      <Tabs.Screen name="gps-tracks" options={hiddenScreenOptions} />
+      <Tabs.Screen name="pedigree-studio" options={hiddenScreenOptions} />
+      <Tabs.Screen name="breeding-match" options={hiddenScreenOptions} />
     </Tabs>
   );
 }

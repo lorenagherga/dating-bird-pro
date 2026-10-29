@@ -19,7 +19,7 @@ import { supabase, SUPABASE_URL } from '@/lib/supabase';
 import { Colors } from '@/lib/theme';
 import { PLAN_LIMITS, GAME_STYLE_OPTIONS, GameStyle } from '@/lib/types';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { Plus, Camera, Image as ImageIcon, Trash2, Pencil, X, Bird, Crown, GitBranch, ChevronDown, Trophy, Award, Download, Wifi } from 'lucide-react-native';
+import { Plus, Camera, Image as ImageIcon, Trash2, Pencil, X, Bird, Crown, GitBranch, ChevronDown, Trophy, Award, Download, Wifi, Dna } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import { scrapeFederationResults, FEDERATION_NAMES, Federation, ScrapedResult } from '@/lib/federation-scraper';
@@ -403,6 +403,9 @@ export default function PigeonsScreen() {
       <View style={styles.pigeonActions}>
         <TouchableOpacity style={styles.iconBtnGold} onPress={() => openFedModal(item)}>
           <Download color={Colors.goldDark} size={18} />
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => router.push(`/(tabs)/genotype?id=${item.id}`)}>
+          <Dna color={Colors.royalBlue} size={18} />
         </TouchableOpacity>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.push(`/(tabs)/pedigree?id=${item.id}`)}>
           <GitBranch color={Colors.royalBlue} size={18} />

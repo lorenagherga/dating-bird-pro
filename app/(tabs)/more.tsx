@@ -16,6 +16,10 @@ import {
   Shield,
   Stethoscope,
   ChevronRight,
+  Building2,
+  Route as RouteIcon,
+  Crown,
+  Heart,
 } from 'lucide-react-native';
 
 interface MoreItem {
@@ -32,6 +36,8 @@ export default function MoreScreen() {
 
   const breedingItems: MoreItem[] = [
     { icon: <Calendar color={Colors.royalBlue} size={22} />, label: t('tabNests'), route: '/(tabs)/nests' },
+    { icon: <Crown color={Colors.royalBlue} size={22} />, label: t('tabPedSt'), route: '/(tabs)/pedigree-studio' },
+    { icon: <Heart color={Colors.royalBlue} size={22} />, label: t('tabBreedMatch'), route: '/(tabs)/breeding-match' },
     { icon: <Calculator color={Colors.royalBlue} size={22} />, label: t('tabGenetic'), route: '/(tabs)/calculator' },
     { icon: <ScanLine color={Colors.royalBlue} size={22} />, label: t('tabScanPedigree'), route: '/(tabs)/scan-pedigree' },
     { icon: <FileText color={Colors.royalBlue} size={22} />, label: t('tabPdfCatalog'), route: '/(tabs)/pdf-catalog' },
@@ -40,6 +46,8 @@ export default function MoreScreen() {
 
   const competitionItems: MoreItem[] = [
     { icon: <Trophy color={Colors.royalBlue} size={22} />, label: t('tabRaces'), route: '/(tabs)/races' },
+    { icon: <Building2 color={Colors.royalBlue} size={22} />, label: t('tabColumbodroms'), route: '/(tabs)/columbodroms' },
+    { icon: <RouteIcon color={Colors.royalBlue} size={22} />, label: t('tabGpsTracks'), route: '/(tabs)/gps-tracks' },
     { icon: <Navigation color={Colors.royalBlue} size={22} />, label: t('tabCopilot'), route: '/(tabs)/copilot' },
     { icon: <Award color={Colors.royalBlue} size={22} />, label: t('tabVitrina'), route: '/(tabs)/vitrina' },
   ];

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,9 @@ import {
   Platform,
   Alert,
   ActivityIndicator,
+  Image,
+  ImageBackground,
+  TextInput,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { CameraView, useCameraPermissions } from 'expo-camera';
@@ -26,12 +29,16 @@ import {
   RefreshCw,
   X,
   CheckCircle2,
+  Check,
   Save,
-  Eye,
   Mars,
   Venus,
   Sparkles,
-  Info,
+  Languages,
+  Eye,
+  Edit3,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react-native';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -40,38 +47,240 @@ interface ExtractedAncestor {
   ring: string;
   sex: 'Mascul' | 'Femelă';
   color: string;
+  year?: number | null;
+  rawText?: string;
 }
 
 interface ExtractedPedigree {
   ring: string;
   sex: 'Mascul' | 'Femelă';
   color: string;
+  year?: number | null;
   gen1: ExtractedAncestor[];
   gen2: ExtractedAncestor[];
   gen3: ExtractedAncestor[];
+  detectedLanguage: string;
+  rawText: string;
+  translated: boolean;
 }
 
-function generateSimulatedPedigree(): ExtractedPedigree {
-  const colors = ['Albastru barat', 'Roșu cenușiu', 'Negru spread', 'Albastru exemplar', 'Argintiu barat', 'Indigo', 'Gal recessiv'];
-  const sexes: ('Mascul' | 'Femelă')[] = ['Mascul', 'Femelă'];
-  const ringPrefix = ['RO', 'BE', 'NL', 'DE'];
-  const year = 2020 + Math.floor(Math.random() * 5);
+const RING_REGEX = /\b([A-Z]{2})[-\s]?(\d{2,4})[-\s]?(\d{1,7})\b/g;
+const YEAR_REGEX = /\b(19|20)\d{2}\b/g;
 
-  const gen = (n: number): ExtractedAncestor[] =>
-    Array.from({ length: n }, (_, i) => ({
-      ring: `${ringPrefix[Math.floor(Math.random() * ringPrefix.length)]}-${year - Math.floor(Math.random() * 3)}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-      sex: sexes[i % 2],
-      color: colors[Math.floor(Math.random() * colors.length)],
-    }));
+const COLOR_TRANSLATIONS: Record<string, string> = {
+  // English → Romanian
+  'blue bar': 'Albastru barat',
+  'blue checker': 'Albastru checker',
+  'blue chequer': 'Albastru checker',
+  'blue': 'Albastru',
+  'red': 'Roșu',
+  'red checker': 'Roșu checker',
+  'ash red': 'Roșu cenușiu',
+  'ash yellow': 'Galben cenușiu',
+  'silver': 'Argintiu',
+  'silver bar': 'Argintiu barat',
+  'black': 'Negru',
+  'spread': 'Spread',
+  'spread black': 'Spread negru',
+  'indigo': 'Indigo',
+  'brown': 'Maro',
+  'mealy': 'Cenușiu',
+  'grizzle': 'Grizzle',
+  'pied': 'Pied',
+  'almond': 'Almond',
+  'dun': 'Dun',
+  'cream': 'Crem',
+  'yellow': 'Galben',
+  'recessive red': 'Roșu recessiv',
+  'recessive yellow': 'Galben recessiv',
+  'check': 'Checker',
+  'checker': 'Checker',
+  'chequer': 'Checker',
+  'barless': 'Fără bară',
+  'splash': 'Splash',
+  'tiger': 'Tiger',
+  'opal': 'Opal',
+  'reduced': 'Reduced',
+  'pencil': 'Pencil',
+  // German → Romanian
+  'blau gebändert': 'Albastru barat',
+  'blau': 'Albastru',
+  'blaugebändert': 'Albastru barat',
+  'rot': 'Roșu',
+  'gelb': 'Galben',
+  'schwarz': 'Negru',
+  'silber': 'Argintiu',
+  'silber gebändert': 'Argintiu barat',
+  'braun': 'Maro',
+  // Dutch → Romanian
+  'blauw': 'Albastru',
+  'blauw gebandeerd': 'Albastru barat',
+  'rood': 'Roșu',
+  'geel': 'Galben',
+  'zwart': 'Negru',
+  'zilver': 'Argintiu',
+  // French → Romanian
+  'bleu': 'Albastru',
+  'bleu barré': 'Albastru barat',
+  'rouge': 'Roșu',
+  'jaune': 'Galben',
+  'noir': 'Negru',
+  'argent': 'Argintiu',
+  // Spanish → Romanian
+  'azul': 'Albastru',
+  'azul barrado': 'Albastru barat',
+  'rojo': 'Roșu',
+  'amarillo': 'Galben',
+  'negro': 'Negro',
+  'plata': 'Argintiu',
+};
+
+const LANGUAGE_KEYWORDS: Record<string, string[]> = {
+  en: ['sire', 'dam', 'father', 'mother', 'cock', 'hen', 'blue', 'red', 'silver', 'black', 'bar', 'checker'],
+  de: ['vater', 'mutter', 'hahn', 'henne', 'blau', 'rot', 'gelb', 'schwarz', 'silber', 'braun'],
+  nl: ['vader', 'moeder', 'doffer', 'duivin', 'blauw', 'rood', 'geel', 'zwart', 'zilver'],
+  fr: ['père', 'mère', 'mâle', 'femelle', 'bleu', 'rouge', 'jaune', 'noir', 'argent'],
+  es: ['padre', 'madre', 'macho', 'hembra', 'azul', 'rojo', 'amarillo', 'negro', 'plata'],
+};
+
+function detectLanguage(text: string): string {
+  const lower = text.toLowerCase();
+  let bestLang = 'en';
+  let bestScore = 0;
+  for (const [lang, keywords] of Object.entries(LANGUAGE_KEYWORDS)) {
+    let score = 0;
+    for (const kw of keywords) {
+      if (lower.includes(kw)) score++;
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      bestLang = lang;
+    }
+  }
+  return bestLang;
+}
+
+function translateColor(color: string): string {
+  const lower = color.toLowerCase().trim();
+  if (COLOR_TRANSLATIONS[lower]) return COLOR_TRANSLATIONS[lower];
+  // Try partial match
+  for (const [key, val] of Object.entries(COLOR_TRANSLATIONS)) {
+    if (lower.includes(key)) return val;
+  }
+  return color;
+}
+
+function parsePedigreeText(text: string): ExtractedPedigree | null {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const allText = lines.join(' ');
+
+  // Extract all ring numbers
+  const rings: string[] = [];
+  let match: RegExpExecArray | null;
+  const ringRegex = new RegExp(RING_REGEX);
+  while ((match = ringRegex.exec(allText)) !== null) {
+    const ring = `${match[1]}-${match[2]}-${match[3]}`;
+    if (!rings.includes(ring)) rings.push(ring);
+  }
+
+  if (rings.length === 0) return null;
+
+  // Extract years
+  const years: number[] = [];
+  const yearRegex = new RegExp(YEAR_REGEX);
+  while ((match = yearRegex.exec(allText)) !== null) {
+    years.push(parseInt(match[0]));
+  }
+
+  // Detect sex keywords
+  const lower = allText.toLowerCase();
+  const hasMale = /\b(cock|male|mâle|mâ|macho|hahn|doffer|m)\b/i.test(allText);
+  const hasFemale = /\b(hen|female|femelle|hembra|henne|duivin|f)\b/i.test(allText);
+
+  // Try to find the root pigeon (usually the first or most prominent ring)
+  const rootRing = rings[0];
+  const rootSex: 'Mascul' | 'Femelă' = hasMale && !hasFemale ? 'Mascul' : hasFemale && !hasMale ? 'Femelă' : 'Mascul';
+
+  // Find color near root ring
+  const findColorNear = (ring: string): string => {
+    const ringIdx = allText.indexOf(ring);
+    if (ringIdx === -1) return '';
+    const context = allText.substring(ringIdx, Math.min(ringIdx + 80, allText.length)).toLowerCase();
+    for (const [key] of Object.entries(COLOR_TRANSLATIONS)) {
+      if (context.includes(key)) return translateColor(key);
+    }
+    return '';
+  };
+
+  const rootColor = findColorNear(rootRing);
+
+  // Build ancestor lists
+  const remainingRings = rings.slice(1);
+  const gen1: ExtractedAncestor[] = [];
+  const gen2: ExtractedAncestor[] = [];
+  const gen3: ExtractedAncestor[] = [];
+
+  // Gen 1: parents (2 birds)
+  for (let i = 0; i < Math.min(2, remainingRings.length); i++) {
+    const ring = remainingRings[i];
+    gen1.push({
+      ring,
+      sex: i === 0 ? 'Mascul' : 'Femelă',
+      color: findColorNear(ring),
+      year: years.length > 0 ? years[Math.min(i + 1, years.length - 1)] : null,
+    });
+  }
+
+  // Gen 2: grandparents (4 birds)
+  const gen2Start = 2;
+  for (let i = 0; i < Math.min(4, remainingRings.length - gen2Start); i++) {
+    const ring = remainingRings[gen2Start + i];
+    gen2.push({
+      ring,
+      sex: i % 2 === 0 ? 'Mascul' : 'Femelă',
+      color: findColorNear(ring),
+      year: years.length > i + 2 ? years[i + 2] : null,
+    });
+  }
+
+  // Gen 3: great-grandparents (8 birds)
+  const gen3Start = 6;
+  for (let i = 0; i < Math.min(8, remainingRings.length - gen3Start); i++) {
+    const ring = remainingRings[gen3Start + i];
+    gen3.push({
+      ring,
+      sex: i % 2 === 0 ? 'Mascul' : 'Femelă',
+      color: findColorNear(ring),
+      year: years.length > i + 6 ? years[i + 6] : null,
+    });
+  }
+
+  const detectedLanguage = detectLanguage(allText);
 
   return {
-    ring: `${ringPrefix[0]}-${year}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
-    sex: sexes[Math.floor(Math.random() * 2)],
-    color: colors[Math.floor(Math.random() * colors.length)],
-    gen1: gen(2),
-    gen2: gen(4),
-    gen3: gen(8),
+    ring: rootRing,
+    sex: rootSex,
+    color: rootColor,
+    year: years.length > 0 ? years[0] : null,
+    gen1,
+    gen2,
+    gen3,
+    detectedLanguage,
+    rawText: text,
+    translated: detectedLanguage !== 'ro' && detectedLanguage !== 'en',
   };
+}
+
+async function runOcr(imageUri: string, onProgress?: (p: number) => void): Promise<string> {
+  const Tesseract = (await import('tesseract.js')).default;
+  const result = await Tesseract.recognize(imageUri, 'eng+deu+fra+spa+nld', {
+    logger: (m: { status: string; progress: number }) => {
+      if (m.status === 'recognizing text' && onProgress) {
+        onProgress(Math.round(m.progress * 100));
+      }
+    },
+  });
+  return result.data.text;
 }
 
 export default function ScanPedigreeScreen() {
@@ -82,9 +291,14 @@ export default function ScanPedigreeScreen() {
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [scanning, setScanning] = useState(false);
+  const [ocrProgress, setOcrProgress] = useState(0);
   const [extracted, setExtracted] = useState<ExtractedPedigree | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [editingRing, setEditingRing] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [showRawText, setShowRawText] = useState(false);
+  const [ocrError, setOcrError] = useState<string | null>(null);
   const cameraRef = useRef<any>(null);
   const scanAnim = useRef(new Animated.Value(0)).current;
 
@@ -97,12 +311,7 @@ export default function ScanPedigreeScreen() {
         ])
       );
       loop.start();
-      const timer = setTimeout(() => {
-        setScanning(false);
-        setExtracted(generateSimulatedPedigree());
-        loop.stop();
-      }, 3200);
-      return () => { clearTimeout(timer); loop.stop(); };
+      return () => { loop.stop(); };
     }
   }, [scanning]);
 
@@ -114,7 +323,7 @@ export default function ScanPedigreeScreen() {
     if (!permission?.granted) {
       const res = await requestPermission();
       if (!res.granted) {
-        Alert.alert(t('error'), 'Permisiune cameră refuzată.');
+        Alert.alert(t('error'), t('scanPedCameraDenied'));
         return;
       }
     }
@@ -123,31 +332,53 @@ export default function ScanPedigreeScreen() {
 
   const captureFromCamera = async () => {
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePicture({ quality: 0.8 });
+      const photo = await cameraRef.current.takePicture({ quality: 0.9 });
       setPhotoUri(photo.uri);
       setCameraVisible(false);
       setExtracted(null);
       setSaved(false);
+      setOcrError(null);
     }
   };
 
   const pickFromGallery = async () => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      quality: 0.8,
+      quality: 0.9,
     });
     if (!res.canceled && res.assets[0]) {
       setPhotoUri(res.assets[0].uri);
       setExtracted(null);
       setSaved(false);
+      setOcrError(null);
     }
   };
 
-  const startScan = () => {
+  const startScan = async () => {
     if (!photoUri) return;
     setExtracted(null);
     setSaved(false);
+    setOcrError(null);
+    setOcrProgress(0);
     setScanning(true);
+
+    try {
+      const ocrText = await runOcr(photoUri, (p) => setOcrProgress(p));
+      const parsed = parsePedigreeText(ocrText);
+
+      setScanning(false);
+
+      if (!parsed) {
+        setOcrError(t('scanPedOcrNoRings'));
+        return;
+      }
+
+      setExtracted(parsed);
+    } catch (err) {
+      setScanning(false);
+      const msg = err instanceof Error ? err.message : 'OCR error';
+      setOcrError(`${t('scanPedOcrError')}: ${msg}`);
+    }
   };
 
   const resetAll = () => {
@@ -155,6 +386,22 @@ export default function ScanPedigreeScreen() {
     setExtracted(null);
     setSaved(false);
     setScanning(false);
+    setOcrError(null);
+    setOcrProgress(0);
+    setShowRawText(false);
+  };
+
+  const updateAncestor = (gen: 'gen1' | 'gen2' | 'gen3', index: number, field: 'ring' | 'color', value: string) => {
+    if (!extracted) return;
+    const updated = { ...extracted };
+    updated[gen] = [...updated[gen]];
+    updated[gen][index] = { ...updated[gen][index], [field]: value };
+    setExtracted(updated);
+  };
+
+  const updateRoot = (field: 'ring' | 'color' | 'sex', value: string) => {
+    if (!extracted) return;
+    setExtracted({ ...extracted, [field]: value });
   };
 
   const saveToRegistry = async () => {
@@ -162,16 +409,17 @@ export default function ScanPedigreeScreen() {
     setSaving(true);
     try {
       const userId = profile.id;
+      const currentYear = new Date().getFullYear();
       const mainPigeon = await supabase
         .from('pigeons')
         .insert({
           user_id: userId,
           ring_series: extracted.ring,
-          year: new Date().getFullYear(),
+          year: extracted.year || currentYear,
           sex: extracted.sex,
           color: extracted.color,
           status: 'În crescătorie',
-          notes: 'Importat prin scanare pedigree AI',
+          notes: `Importat prin OCR AI${extracted.detectedLanguage !== 'ro' ? ` (limba detectată: ${extracted.detectedLanguage.toUpperCase()})` : ''}`,
         })
         .select('id')
         .single();
@@ -181,16 +429,17 @@ export default function ScanPedigreeScreen() {
         const gen1Ids: string[] = [];
 
         for (const ancestor of extracted.gen1) {
+          if (!ancestor.ring) continue;
           const { data } = await supabase
             .from('pigeons')
             .insert({
               user_id: userId,
               ring_series: ancestor.ring,
-              year: new Date().getFullYear() - 1,
+              year: ancestor.year || currentYear - 1,
               sex: ancestor.sex,
               color: ancestor.color,
               status: 'În crescătorie',
-              notes: 'Strămoș importat prin scanare AI',
+              notes: 'Strămoș importat prin OCR AI',
             })
             .select('id')
             .single();
@@ -198,24 +447,22 @@ export default function ScanPedigreeScreen() {
         }
 
         if (gen1Ids.length >= 2) {
-          await supabase
-            .from('pigeons')
-            .update({ sire_id: gen1Ids[0], dam_id: gen1Ids[1] })
-            .eq('id', mainId);
+          await supabase.from('pigeons').update({ sire_id: gen1Ids[0], dam_id: gen1Ids[1] }).eq('id', mainId);
         }
 
         const gen2Ids: string[] = [];
         for (const ancestor of extracted.gen2) {
+          if (!ancestor.ring) continue;
           const { data } = await supabase
             .from('pigeons')
             .insert({
               user_id: userId,
               ring_series: ancestor.ring,
-              year: new Date().getFullYear() - 2,
+              year: ancestor.year || currentYear - 2,
               sex: ancestor.sex,
               color: ancestor.color,
               status: 'În crescătorie',
-              notes: 'Strămoș Gen2 importat prin scanare AI',
+              notes: 'Strămoș Gen2 importat prin OCR AI',
             })
             .select('id')
             .single();
@@ -231,16 +478,17 @@ export default function ScanPedigreeScreen() {
 
         const gen3Ids: string[] = [];
         for (const ancestor of extracted.gen3) {
+          if (!ancestor.ring) continue;
           const { data } = await supabase
             .from('pigeons')
             .insert({
               user_id: userId,
               ring_series: ancestor.ring,
-              year: new Date().getFullYear() - 3,
+              year: ancestor.year || currentYear - 3,
               sex: ancestor.sex,
               color: ancestor.color,
               status: 'În crescătorie',
-              notes: 'Strămoș Gen3 importat prin scanare AI',
+              notes: 'Strămoș Gen3 importat prin OCR AI',
             })
             .select('id')
             .single();
@@ -273,15 +521,85 @@ export default function ScanPedigreeScreen() {
     outputRange: [0, 200],
   });
 
-  const renderAncestorRow = (a: ExtractedAncestor, idx: number) => (
-    <View key={idx} style={styles.ancestorRow}>
-      <View style={styles.sexIconBox}>
-        {a.sex === 'Mascul' ? <Mars color={Colors.royalBlue} size={14} /> : <Venus color={Colors.error} size={14} />}
+  const startEdit = (ring: string, currentVal: string) => {
+    setEditingRing(ring);
+    setEditValue(currentVal);
+  };
+
+  const saveEdit = (gen: 'gen1' | 'gen2' | 'gen3' | 'root', index: number, field: 'ring' | 'color') => {
+    if (gen === 'root') {
+      updateRoot(field, editValue);
+    } else {
+      updateAncestor(gen, index, field, editValue);
+    }
+    setEditingRing(null);
+    setEditValue('');
+  };
+
+  const renderEditableField = (
+    value: string,
+    editKey: string,
+    onEdit: () => void,
+    onSave: () => void,
+    style: any,
+    placeholder = ''
+  ) => {
+    if (editingRing === editKey) {
+      return (
+        <View style={styles.editRow}>
+          <TextInput
+            style={styles.editInput}
+            value={editValue}
+            onChangeText={setEditValue}
+            placeholder={placeholder}
+            placeholderTextColor={Colors.textLight}
+            autoFocus
+          />
+          <TouchableOpacity style={styles.editSaveBtn} onPress={onSave}>
+            <Check color={Colors.success} size={16} />
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return (
+      <TouchableOpacity onPress={onEdit} activeOpacity={0.7}>
+        <Text style={style}>{value || t('scanPedTapEdit')}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  const renderAncestorRow = (a: ExtractedAncestor, idx: number, gen: 'gen1' | 'gen2' | 'gen3') => {
+    const ringKey = `${gen}-${idx}-ring`;
+    const colorKey = `${gen}-${idx}-color`;
+    return (
+      <View key={idx} style={styles.ancestorRow}>
+        <View style={styles.sexIconBox}>
+          {a.sex === 'Mascul' ? <Mars color={Colors.royalBlue} size={14} /> : <Venus color={Colors.error} size={14} />}
+        </View>
+        <View style={{ flex: 1 }}>
+          {renderEditableField(
+            a.ring,
+            ringKey,
+            () => startEdit(ringKey, a.ring),
+            () => saveEdit(gen, idx, 'ring'),
+            styles.ancestorRing,
+            'RO-2024-123456'
+          )}
+        </View>
+        <View style={{ flex: 1 }}>
+          {renderEditableField(
+            a.color,
+            colorKey,
+            () => startEdit(colorKey, a.color),
+            () => saveEdit(gen, idx, 'color'),
+            styles.ancestorColor,
+            t('scanPedColorPh')
+          )}
+        </View>
+        <Edit3 color={Colors.textLight} size={12} />
       </View>
-      <Text style={styles.ancestorRing}>{a.ring}</Text>
-      <Text style={styles.ancestorColor}>{a.color}</Text>
-    </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -294,7 +612,7 @@ export default function ScanPedigreeScreen() {
               <FileText color={Colors.gold} size={48} />
             </View>
             <Text style={styles.introTitle}>{t('scanPedTitle')}</Text>
-            <Text style={styles.introSubtitle}>{t('scanPedNoDataSub')}</Text>
+            <Text style={styles.introSubtitle}>{t('scanPedOcrDesc')}</Text>
 
             <View style={styles.instructionsCard}>
               <Text style={styles.instructionsTitle}>{t('scanPedInstructions')}</Text>
@@ -304,12 +622,17 @@ export default function ScanPedigreeScreen() {
               </View>
               <View style={styles.instructionRow}>
                 <View style={styles.instructionDot}><Text style={styles.instructionDotText}>2</Text></View>
-                <Text style={styles.instructionText}>{t('scanPedInstr2')}</Text>
+                <Text style={styles.instructionText}>{t('scanPedOcrInstr2')}</Text>
               </View>
               <View style={styles.instructionRow}>
                 <View style={styles.instructionDot}><Text style={styles.instructionDotText}>3</Text></View>
-                <Text style={styles.instructionText}>{t('scanPedInstr3')}</Text>
+                <Text style={styles.instructionText}>{t('scanPedOcrInstr3')}</Text>
               </View>
+            </View>
+
+            <View style={styles.languagesBanner}>
+              <Languages color={Colors.royalBlue} size={18} />
+              <Text style={styles.languagesText}>{t('scanPedOcrLangs')}</Text>
             </View>
 
             <TouchableOpacity style={styles.primaryBtn} onPress={takePhoto}>
@@ -355,27 +678,55 @@ export default function ScanPedigreeScreen() {
             <View style={styles.photoCard}>
               {scanning ? (
                 <View style={styles.scanningOverlay}>
-                  <View style={styles.scanArea}>
-                    <Animated.View
-                      style={[styles.scanLine, { transform: [{ translateY: scanLineTop }] }]}
-                    />
-                  </View>
-                  <View style={styles.scanningInfo}>
-                    <ScanLine color={Colors.gold} size={28} />
-                    <Text style={styles.scanningText}>{t('scanPedAnalyzing')}</Text>
+                  {photoUri && (
+                    <ImageBackground
+                      source={{ uri: photoUri }}
+                      style={styles.scanPhotoBg}
+                      resizeMode="cover"
+                    >
+                      <View style={styles.scanDim}>
+                        <View style={styles.scanArea}>
+                          <Animated.View
+                            style={[styles.scanLine, { transform: [{ translateY: scanLineTop }] }]}
+                          />
+                        </View>
+                      </View>
+                    </ImageBackground>
+                  )}
+                  <View style={styles.scanningInfoBox}>
+                    <View style={styles.scanningInfo}>
+                      <ScanLine color={Colors.gold} size={28} />
+                      <Text style={styles.scanningText}>{t('scanPedOcrReading')}</Text>
+                    </View>
+                    <View style={styles.progressContainer}>
+                      <View style={styles.progressBar}>
+                        <View style={[styles.progressFill, { width: `${ocrProgress}%` }]} />
+                      </View>
+                      <Text style={styles.progressText}>{ocrProgress}%</Text>
+                    </View>
+                    <Text style={styles.scanningSubtext}>{t('scanPedOcrWait')}</Text>
                   </View>
                 </View>
               ) : (
                 <View style={styles.photoFrame}>
-                  <View style={styles.photoPlaceholder}>
-                    <FileText color={Colors.textLight} size={40} />
-                    <Text style={styles.photoPlaceholderText}>Pedigree încărcat</Text>
-                  </View>
+                  {photoUri && (
+                    <Image source={{ uri: photoUri }} style={styles.photoImage} resizeMode="contain" />
+                  )}
                 </View>
               )}
             </View>
 
-            {!scanning && !extracted && !saved && (
+            {ocrError && !scanning && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{ocrError}</Text>
+                <TouchableOpacity style={styles.retryBtn} onPress={startScan}>
+                  <RefreshCw color={Colors.royalBlue} size={16} />
+                  <Text style={styles.retryBtnText}>{t('scanPedRetry')}</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
+            {!scanning && !extracted && !saved && !ocrError && (
               <TouchableOpacity style={styles.primaryBtn} onPress={startScan}>
                 <ScanLine color={Colors.white} size={22} />
                 <Text style={styles.primaryBtnText}>{t('diagScan')}</Text>
@@ -390,36 +741,81 @@ export default function ScanPedigreeScreen() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.resultsTitle}>{t('scanPedExtracted')}</Text>
-                    <Text style={styles.resultsSub}>{t('scanPedPreview')}</Text>
+                    <Text style={styles.resultsSub}>{t('scanPedOcrEditHint')}</Text>
                   </View>
                 </View>
 
+                {extracted.detectedLanguage !== 'ro' && extracted.detectedLanguage !== 'en' && (
+                  <View style={styles.langDetectedBox}>
+                    <Languages color={Colors.royalBlue} size={16} />
+                    <Text style={styles.langDetectedText}>
+                      {t('scanPedOcrDetected')}: {extracted.detectedLanguage.toUpperCase()} → {t('scanPedOcrTranslated')}
+                    </Text>
+                  </View>
+                )}
+
+                {/* Root bird card */}
                 <View style={styles.birdCard}>
                   <View style={styles.birdHeader}>
                     <View style={styles.birdIconBox}>
                       {extracted.sex === 'Mascul' ? <Mars color={Colors.royalBlue} size={20} /> : <Venus color={Colors.error} size={20} />}
                     </View>
                     <View style={{ flex: 1 }}>
-                      <Text style={styles.birdRing}>{extracted.ring}</Text>
-                      <Text style={styles.birdColor}>{extracted.color}</Text>
+                      {renderEditableField(
+                        extracted.ring,
+                        'root-ring',
+                        () => startEdit('root-ring', extracted.ring),
+                        () => saveEdit('root', 0, 'ring'),
+                        styles.birdRing,
+                        'RO-2024-123456'
+                      )}
+                      {renderEditableField(
+                        extracted.color || '',
+                        'root-color',
+                        () => startEdit('root-color', extracted.color || ''),
+                        () => saveEdit('root', 0, 'color'),
+                        styles.birdColor,
+                        t('scanPedColorPh')
+                      )}
                     </View>
                     <View style={styles.aiBadge}>
                       <Sparkles color={Colors.gold} size={12} />
-                      <Text style={styles.aiBadgeText}>AI</Text>
+                      <Text style={styles.aiBadgeText}>OCR</Text>
                     </View>
                   </View>
                 </View>
 
+                {/* Generations */}
                 {([
-                  { label: t('gen1') || 'Gen 1 · Părinți', data: extracted.gen1 },
-                  { label: t('gen2') || 'Gen 2 · Bunici', data: extracted.gen2 },
-                  { label: t('gen3') || 'Gen 3 · Străbunici', data: extracted.gen3 },
-                ] as const).map((gen, gi) => (
-                  <View key={gi} style={styles.genCard}>
-                    <Text style={styles.genTitle}>{gen.label}</Text>
-                    {gen.data.map((a, ai) => renderAncestorRow(a, ai))}
+                  { key: 'gen1' as const, label: t('gen1') || 'Gen 1 · Părinți', data: extracted.gen1 },
+                  { key: 'gen2' as const, label: t('gen2') || 'Gen 2 · Bunici', data: extracted.gen2 },
+                  { key: 'gen3' as const, label: t('gen3') || 'Gen 3 · Străbunici', data: extracted.gen3 },
+                ]).map((gen) => (
+                  <View key={gen.key} style={styles.genCard}>
+                    <Text style={styles.genTitle}>{gen.label} <Text style={styles.genCount}>({gen.data.length})</Text></Text>
+                    {gen.data.length === 0 ? (
+                      <Text style={styles.genEmpty}>{t('scanPedOcrNoGen')}</Text>
+                    ) : (
+                      gen.data.map((a, ai) => renderAncestorRow(a, ai, gen.key))
+                    )}
                   </View>
                 ))}
+
+                {/* Raw OCR text toggle */}
+                <TouchableOpacity
+                  style={styles.rawToggleBtn}
+                  onPress={() => setShowRawText(!showRawText)}
+                >
+                  <Eye color={Colors.textSecondary} size={16} />
+                  <Text style={styles.rawToggleText}>{t('scanPedOcrRawText')}</Text>
+                  {showRawText ? <ChevronUp color={Colors.textSecondary} size={16} /> : <ChevronDown color={Colors.textSecondary} size={16} />}
+                </TouchableOpacity>
+
+                {showRawText && (
+                  <View style={styles.rawTextBox}>
+                    <Text style={styles.rawTextContent}>{extracted.rawText}</Text>
+                  </View>
+                )}
 
                 <TouchableOpacity style={styles.goldSaveBtn} onPress={saveToRegistry} disabled={saving}>
                   {saving ? (
@@ -460,6 +856,8 @@ export default function ScanPedigreeScreen() {
   );
 }
 
+// (TextInput imported at top of file)
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scrollContent: { padding: 24, paddingBottom: 100 },
@@ -498,6 +896,17 @@ const styles = StyleSheet.create({
   },
   instructionDotText: { fontFamily: 'Inter-Bold', fontSize: 13, color: Colors.royalBlue },
   instructionText: { flex: 1, fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textSecondary },
+  languagesBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.royalBluePale,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginTop: 4,
+  },
+  languagesText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.royalBlue },
   primaryBtn: {
     flexDirection: 'row',
     backgroundColor: Colors.royalBlue,
@@ -585,29 +994,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   photoFrame: {
-    height: 240,
+    height: 280,
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
   },
-  photoPlaceholder: {
-    flex: 1,
-    backgroundColor: Colors.neutral100,
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: 8,
-  },
-  photoPlaceholderText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textLight },
+  photoImage: { width: '100%', height: '100%' },
   scanningOverlay: {
-    height: 240,
+    height: 280,
     borderRadius: BorderRadius.md,
     overflow: 'hidden',
     backgroundColor: Colors.neutral900,
-    justifyContent: 'center',
-    alignItems: 'center',
   },
+  scanPhotoBg: { width: '100%', height: 200 },
+  scanDim: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   scanArea: {
     width: SCREEN_WIDTH * 0.75,
-    height: 200,
+    height: 160,
     borderWidth: 2,
     borderColor: Colors.gold,
     borderRadius: 12,
@@ -625,8 +1027,24 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 4,
   },
-  scanningInfo: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 20 },
+  scanningInfoBox: { padding: 16, alignItems: 'center', gap: 12 },
+  scanningInfo: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   scanningText: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.goldLight },
+  scanningSubtext: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.goldLight, opacity: 0.7 },
+  progressContainer: { flexDirection: 'row', alignItems: 'center', gap: 8, width: '80%' },
+  progressBar: { flex: 1, height: 6, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 3, overflow: 'hidden' },
+  progressFill: { height: '100%', backgroundColor: Colors.gold, borderRadius: 3 },
+  progressText: { fontFamily: 'Inter-Bold', fontSize: 13, color: Colors.goldLight, minWidth: 36 },
+  errorBox: {
+    backgroundColor: Colors.errorBg,
+    borderRadius: 12,
+    padding: 16,
+    gap: 10,
+    marginBottom: 16,
+  },
+  errorText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.error, lineHeight: 20 },
+  retryBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'flex-start' },
+  retryBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.royalBlue },
   resultsContainer: { gap: 14, marginTop: 8 },
   resultsHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   resultsIconBox: {
@@ -639,6 +1057,16 @@ const styles = StyleSheet.create({
   },
   resultsTitle: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.text },
   resultsSub: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
+  langDetectedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.royalBluePale,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  langDetectedText: { fontFamily: 'Inter-SemiBold', fontSize: 12, color: Colors.royalBlue },
   birdCard: {
     backgroundColor: Colors.royalBlue,
     borderRadius: BorderRadius.lg,
@@ -675,6 +1103,8 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   genTitle: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.royalBlue, marginBottom: 4 },
+  genCount: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary },
+  genEmpty: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textLight, fontStyle: 'italic', paddingVertical: 8 },
   ancestorRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -691,8 +1121,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  ancestorRing: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.text, flex: 1 },
-  ancestorColor: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary, flex: 1 },
+  ancestorRing: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.text },
+  ancestorColor: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary },
+  editRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  editInput: {
+    flex: 1,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    borderWidth: 1,
+    borderColor: Colors.royalBlue,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    color: Colors.text,
+    backgroundColor: Colors.white,
+  },
+  editSaveBtn: { padding: 4 },
+  rawToggleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: Colors.neutral100,
+    borderRadius: 10,
+  },
+  rawToggleText: { flex: 1, fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.textSecondary },
+  rawTextBox: {
+    backgroundColor: Colors.neutral100,
+    borderRadius: 10,
+    padding: 14,
+    maxHeight: 200,
+  },
+  rawTextContent: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.textSecondary, lineHeight: 16 },
   goldSaveBtn: {
     flexDirection: 'row',
     backgroundColor: Colors.gold,
