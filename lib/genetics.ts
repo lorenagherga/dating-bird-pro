@@ -12,7 +12,7 @@ import type { Language } from './i18n';
 // === BASE COLOR (autosomal, 3 alleles with dominance hierarchy) ===
 // Symbol: B (blue/black) > BA (ash-red) > b (brown) — all at same locus
 export type BaseColor = 'B' | 'BA' | 'b';
-export const BASE_COLOR_PRIORITY: Record<BaseColor, number> = { B: 3, BA: 2, b: 1 };
+export const BASE_COLOR_PRIORITY: Record<BaseColor, number> = { BA: 3, B: 2, b: 1 };
 export const BASE_COLOR_NAMES: Record<BaseColor, { ro: string; en: string }> = {
   B: { ro: 'Albastru/Negru', en: 'Blue/Black' },
   BA: { ro: 'Roșu Cenușiu', en: 'Ash Red' },
