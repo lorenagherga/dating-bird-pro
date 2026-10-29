@@ -1,2 +1,11 @@
 [functions.pigeon-web-search]
 verify_jwt = true
+
+[functions.benzing-sync]
+verify_jwt = false
+
+[functions.gps-tracks]
+verify_jwt = false
+
+[functions.pedigree-import]
+verify_jwt = false

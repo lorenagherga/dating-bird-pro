@@ -1,0 +1,21 @@
+{
+  "projectId": "71913607",
+  "functions": {
+    "benzing-sync": {
+      "hasChanged": false,
+      "hash": "867997841928624d5bc6dc52120d6e6ec1533ed1d8e87f3a93aa2dffd0551fd9"
+    },
+    "gps-tracks": {
+      "hasChanged": false,
+      "hash": "7ec2ec9aa8b082d0bcb43c10166864e22cc690a9f942906303fd4ac8fd40a1d5"
+    },
+    "pigeon-web-search": {
+      "hasChanged": false,
+      "hash": "9e7a0176380987b8edacc1202ab2d8a0cf2d2dbfd3e5af70c57cf4a77a4f7038"
+    },
+    "pedigree-import": {
+      "hasChanged": false,
+      "hash": "2ebc8fdd001a85e5575ae1927a658a32e2f31ec48cc4df646d5a64762fb29b11"
+    }
+  }
+}
