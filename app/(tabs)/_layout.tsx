@@ -52,8 +52,9 @@ export default function TabLayout() {
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter-SemiBold',
-          fontSize: 12,
-          marginTop: 6,
+          fontSize: 9.5,
+          fontWeight: '600 ,
+          marginTop: -2,
           letterSpacing: 0.2,
         },
         tabBarIconStyle: {
