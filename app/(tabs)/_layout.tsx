@@ -46,9 +46,9 @@ export default function TabLayout() {
           backgroundColor: Colors.white,
           borderTopColor: Colors.borderLight,
           borderTopWidth: 1,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : 10 + 44,
-          paddingTop: 10,
-          height: 112 + (insets.bottom > 0 ? insets.bottom : 10),
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 10 + 52,
+          paddingTop: 8,
+          height: 124 + (insets.bottom > 0 ? insets.bottom : 10),
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter-SemiBold',
@@ -92,10 +92,10 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="chat"
+        name="community"
         options={{
-          title: 'Chat',
-          tabBarIcon: ({ color }: { focused: boolean; color: ColorValue; size: number }) => <MessageCircle color={color} size={28} />,
+          title: ro ? 'Comunitate' : 'Community',
+          tabBarIcon: ({ color }: { focused: boolean; color: string; size: number }) => <MessageCircle color={color} size={26} />,
         }}
       />
       <Tabs.Screen
@@ -132,6 +132,7 @@ export default function TabLayout() {
       <Tabs.Screen name="auctions" options={hiddenScreenOptions} />
       <Tabs.Screen name="partners" options={hiddenScreenOptions} />
       <Tabs.Screen name="eye-sign" options={hiddenScreenOptions} />
+      <Tabs.Screen name="chat" options={hiddenScreenOptions} />
       <Tabs.Screen name="pdf-catalog" options={hiddenScreenOptions} />
       <Tabs.Screen name="copilot" options={hiddenScreenOptions} />
       <Tabs.Screen name="profile" options={hiddenScreenOptions} />
