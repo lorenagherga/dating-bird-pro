@@ -3,13 +3,20 @@ import { useRouter } from 'expo-router';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { useLanguage } from '@/lib/language-context';
-import { Gavel, Users, ChevronRight } from 'lucide-react-native';
+import { Gavel, Users, MessageCircle, ChevronRight } from 'lucide-react-native';
 
 export default function CommunityScreen() {
   const { t } = useLanguage();
   const router = useRouter();
 
   const cards = [
+    {
+      icon: <MessageCircle color={Colors.white} size={32} />,
+      title: 'Chat Comunitate',
+      subtitle: 'Discută live cu alți columbofili',
+      route: '/(tabs)/chat',
+      gradient: '#0284C7',
+    },
     {
       icon: <Gavel color={Colors.white} size={32} />,
       title: t('tabAuctions'),
