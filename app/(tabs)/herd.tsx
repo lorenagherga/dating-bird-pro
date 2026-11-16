@@ -52,8 +52,7 @@ export default function HerdScreen() {
     {
       title: ro ? 'Vânzări' : 'Sales',
       items: [
-        { label: t('tabAuctions'), icon: Gavel, route: '/(tabs)/auctions' },
-        { label: t('tabPdfCatalog'), icon: FileText, route: '/(tabs)/pdf-catalog' },
+                { label: t('tabPdfCatalog'), icon: FileText, route: '/(tabs)/pdf-catalog' },
       ],
     },
   ];
