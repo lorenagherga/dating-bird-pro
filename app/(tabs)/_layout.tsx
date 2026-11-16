@@ -131,6 +131,7 @@ export default function TabLayout() {
       <Tabs.Screen name="doctor" options={hiddenScreenOptions} />
       <Tabs.Screen name="auctions" options={hiddenScreenOptions} />
       <Tabs.Screen name="partners" options={hiddenScreenOptions} />
+      <Tabs.Screen name="eye-sign" options={hiddenScreenOptions} />
       <Tabs.Screen name="pdf-catalog" options={hiddenScreenOptions} />
       <Tabs.Screen name="copilot" options={hiddenScreenOptions} />
       <Tabs.Screen name="profile" options={hiddenScreenOptions} />
