@@ -1,19 +1,19 @@
 {
   "expo": {
-    "name": "Pigeon Fan Pro",
-    "slug": "pigeon-fan-pro",
+    "name": "Pigeon Fan",
+    "slug": "pigeon-fan",
     "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "pigeonfanpro",
+    "scheme": "pigeonfan",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.pigeonfanpro.app"
+      "bundleIdentifier": "com.pigeonfan.app"
     },
     "android": {
-      "package": "com.pigeonfanpro.app",
+      "package": "com.pigeonfan.app",
       "versionCode": 4,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/icon.png",
