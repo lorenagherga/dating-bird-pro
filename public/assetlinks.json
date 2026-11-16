@@ -1,0 +1,13 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.pigeonfan.app",
+      "sha256_cert_fingerprints": [
+        "01:E4:78:C3:9B:5C:58:14:43:55:04:3C:53:D9:18:DA:55:2C:46:9F:2C:A0:BC:D7:98:0B:80:40:BA:73:44:54",
+        "F2:FC:26:88:B5:3A:F7:19:C6:BC:85:12:C6:B3:14:36:97:E7:08:2E:A0:AC:A2:90:DD:88:3E:53:AB:FE:25:FF"
+      ]
+    }
+  }
+]
