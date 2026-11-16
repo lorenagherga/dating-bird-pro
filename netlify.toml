@@ -17,5 +17,5 @@ for = "/assetlinks.json"
 Content-Type = "application/json"
 
 [build]
-command = "npm run build:web"
+command = "npm run build:web && cp -r public/. dist/"
 publish = "dist"
