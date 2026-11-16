@@ -114,7 +114,7 @@ async function searchDuckDuckGo(query: string): Promise<WebResult | null> {
   const url = `https://api.duckduckgo.com/?q=${encodedQuery}&format=json&no_html=1&skip_disambig=1`;
 
   const response = await fetch(url, {
-    headers: { "User-Agent": "PigeonFanPro/1.0" },
+    headers: { "User-Agent": "PigeonFan/1.0" },
   });
 
   if (!response.ok) return null;
@@ -154,7 +154,7 @@ async function searchWikipedia(query: string, lang: string): Promise<WebResult |
   const searchUrl = `https://${wikiLang}.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&srlimit=2`;
 
   const response = await fetch(searchUrl, {
-    headers: { "User-Agent": "PigeonFanPro/1.0" },
+    headers: { "User-Agent": "PigeonFan/1.0" },
   });
 
   if (!response.ok) return null;
