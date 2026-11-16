@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.pigeonfanpro.app'
+    namespace 'com.pigeonfan.app'
     defaultConfig {
-        applicationId 'com.pigeonfanpro.app'
+        applicationId 'com.pigeonfan.app'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

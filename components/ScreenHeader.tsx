@@ -1,7 +1,9 @@
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Colors } from '@/lib/theme';
+import { BorderRadius, Colors } from '@/lib/theme';
 import { ArrowLeft } from 'lucide-react-native';
+import { LanguagePicker } from '@/components/LanguagePicker';
+import { NotificationBell } from '@/components/NotificationBell';
 
 interface ScreenHeaderProps {
   title: string;
@@ -30,13 +32,17 @@ export function ScreenHeader({ title, subtitle, showBack, onBack }: ScreenHeader
       <View style={styles.topRow}>
         {showBack && (
           <TouchableOpacity style={styles.backBtn} onPress={handleBack} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}>
-            <ArrowLeft color={Colors.royalBlue} size={24} strokeWidth={2} />
+            <ArrowLeft color={Colors.white} size={24} strokeWidth={2} />
           </TouchableOpacity>
         )}
         <View style={styles.titleBox}>
           <View style={styles.accentLine} />
           <Text style={styles.title}>{title}</Text>
           {subtitle && <Text style={styles.subtitle}>{subtitle}</Text>}
+        </View>
+        <View style={styles.actions}>
+          <NotificationBell />
+          <LanguagePicker />
         </View>
       </View>
     </View>
@@ -47,6 +53,9 @@ const styles = StyleSheet.create({
   header: {
     marginTop: 50,
     marginBottom: 24,
+    backgroundColor: Colors.royalBlue,
+    borderRadius: BorderRadius.xl,
+    padding: 20,
   },
   topRow: {
     flexDirection: 'row',
@@ -57,13 +66,15 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: Colors.royalBluePale,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 4,
+    backgroundColor: 'rgba(255,255,255,0.14)',
   },
   titleBox: {
     flex: 1,
+  },
+  actions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   accentLine: {
     width: 36,
@@ -75,13 +86,13 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: 'Inter-Bold',
     fontSize: 26,
-    color: Colors.text,
+    color: Colors.white,
     letterSpacing: -0.5,
   },
   subtitle: {
     fontFamily: 'Inter-Regular',
     fontSize: 15,
-    color: Colors.textSecondary,
+    color: Colors.royalBluePale,
     marginTop: 4,
   },
 });
