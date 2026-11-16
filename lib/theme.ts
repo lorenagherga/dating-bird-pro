@@ -5,6 +5,9 @@ export const Colors = {
   royalBlueLight: '#1E3F8A',
   royalBluePale: '#EAF0FB',
   royalBlueMist: '#F4F7FD',
+  royalBlueSoft: '#DCE6F8',
+  royalBlueBorder: '#C3D4F0',
+  royalBlueAccent: '#2B5FC7',
 
   // Warm Premium Gold — elegant accent
   gold: '#C9A84C',
@@ -14,7 +17,7 @@ export const Colors = {
 
   // Off-white backgrounds — clean, airy
   white: '#FFFFFF',
-  background: '#FBFCFE',
+  background: '#E6EFFB',
   card: '#FFFFFF',
   cream: '#FFFDF8',
 

@@ -2,11 +2,20 @@ export type SubscriptionPlan = 'trial' | 'pro';
 
 export type PigeonType = 'racing' | 'fancy' | 'both';
 
-export type PigeonCategory = 'racing_speed' | 'racing_endurance' | 'fancy_exhibition' | 'fancy_flying';
+export type PigeonCategory = 'voiajori' | 'frumusete' | 'joc_zbor';
 
-export const PIGEON_CATEGORIES: PigeonCategory[] = ['racing_speed', 'racing_endurance', 'fancy_exhibition', 'fancy_flying'];
+export const PIGEON_CATEGORIES: PigeonCategory[] = ['voiajori', 'frumusete', 'joc_zbor'];
 
-export type GameStyle = 'short' | 'medium' | 'long' | 'faller' | 'none';
+export type GameStyle =
+  | 'short'
+  | 'medium'
+  | 'long'
+  | 'faller'
+  | 'none'
+  | 'short_frequent'
+  | 'spiral'
+  | 'long_flight'
+  | 'disappearance';
 
 export const GAME_STYLE_LABELS: Record<GameStyle, string> = {
   short: 'Joc Scurt',
@@ -14,9 +23,23 @@ export const GAME_STYLE_LABELS: Record<GameStyle, string> = {
   long: 'Joc Lung',
   faller: 'Căzător',
   none: 'Fără Joc',
+  short_frequent: 'Joc scurt și des',
+  spiral: 'Joc în spirală',
+  long_flight: 'Zbor de durată',
+  disappearance: 'Dispariție',
 };
 
-export const GAME_STYLE_OPTIONS: GameStyle[] = ['short', 'medium', 'long', 'faller', 'none'];
+export const GAME_STYLE_OPTIONS: GameStyle[] = [
+  'short',
+  'medium',
+  'long',
+  'faller',
+  'none',
+  'short_frequent',
+  'spiral',
+  'long_flight',
+  'disappearance',
+];
 
 export type MedalType = 'gold' | 'silver' | 'bronze';
 
@@ -56,11 +79,19 @@ export interface Profile {
   id: string;
   email: string;
   breeder_name: string;
+  full_name: string | null;
+  phone: string | null;
+  location: string | null;
   subscription_plan: SubscriptionPlan;
+  pro_expires_at: string | null;
   pigeon_type: PigeonType | null;
   pigeon_categories: PigeonCategory[] | null;
+  commission_role: CommissionRole;
+  is_suspended: boolean;
   created_at: string;
 }
+
+export type CommissionRole = 'standard' | 'partner' | 'ambassador';
 
 export interface Pigeon {
   id: string;
@@ -136,7 +167,4 @@ export const PLAN_LABELS: Record<SubscriptionPlan, string> = {
   pro: 'Pro',
 };
 
-export const PLAN_PRICES: Record<SubscriptionPlan, string> = {
-  trial: '15 zile gratuit',
-  pro: '300 lei/an',
-};
+export const TRIAL_PRICE_LABEL = '15 zile gratuit';

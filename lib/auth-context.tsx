@@ -1,12 +1,14 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase';
-import type { Profile, SubscriptionPlan, PigeonType, PigeonCategory } from './types';
+import type { Profile, SubscriptionPlan, PigeonType, PigeonCategory, CommissionRole } from './types';
+import { fetchPartnerProFree, normalizeCommissionRole } from './commission';
 import { Platform } from 'react-native';
 
 interface VipStatus {
   isVip: boolean;
   vipPlan: SubscriptionPlan | null;
   reason: string;
+  badge: string | null;
 }
 
 interface AuthContextType {
@@ -15,6 +17,9 @@ interface AuthContextType {
   loading: boolean;
   isAdmin: boolean;
   isVip: boolean;
+  isAmbassador: boolean;
+  isPartner: boolean;
+  commissionRole: CommissionRole;
   vipPlan: SubscriptionPlan | null;
   effectivePlan: SubscriptionPlan;
   deviceId: string;
@@ -28,7 +33,6 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
-  updatePlan: (plan: SubscriptionPlan) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -71,14 +75,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [vipStatus, setVipStatus] = useState<VipStatus>({ isVip: false, vipPlan: null, reason: '' });
+  const [vipStatus, setVipStatus] = useState<VipStatus>({ isVip: false, vipPlan: null, reason: '', badge: null });
   const [deviceId, setDeviceId] = useState('');
   const [deviceLockError, setDeviceLockError] = useState<string | null>(null);
+  const [partnerProFree, setPartnerProFree] = useState(false);
 
   const pigeonType = profile?.pigeon_type ?? null;
   const pigeonCategories = profile?.pigeon_categories ?? null;
-  const plan = profile?.subscription_plan || 'trial';
-  const effectivePlan: SubscriptionPlan = vipStatus.isVip && vipStatus.vipPlan ? vipStatus.vipPlan : plan;
+  const proExpired = profile?.subscription_plan === 'pro'
+    && !!profile.pro_expires_at
+    && new Date(profile.pro_expires_at).getTime() <= Date.now();
+  const plan: SubscriptionPlan = proExpired ? 'trial' : profile?.subscription_plan || 'trial';
+  const commissionRole: CommissionRole = vipStatus.badge === 'ambassador'
+    ? 'ambassador'
+    : normalizeCommissionRole(profile?.commission_role);
+  const hasFreeProPerk = partnerProFree && commissionRole !== 'standard';
+  const effectivePlan: SubscriptionPlan = vipStatus.isVip && vipStatus.vipPlan
+    ? vipStatus.vipPlan
+    : hasFreeProPerk ? 'pro' : plan;
+
+  useEffect(() => {
+    if (!session) {
+      setPartnerProFree(false);
+      return;
+    }
+    fetchPartnerProFree()
+      .then(setPartnerProFree)
+      .catch(() => setPartnerProFree(false));
+  }, [session]);
 
   const clearDeviceLockError = useCallback(() => setDeviceLockError(null), []);
 
@@ -110,7 +134,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setSession(null);
           setProfile(null);
           setIsAdmin(false);
-          setVipStatus({ isVip: false, vipPlan: null, reason: '' });
+          setVipStatus({ isVip: false, vipPlan: null, reason: '', badge: null });
           setLoading(false);
         }
       })();
@@ -136,13 +160,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // 2. Check VIP status
       const { data: vipEntry } = await supabase
         .from('vip_list')
-        .select('plan, reason')
+        .select('plan, reason, badge')
         .eq('email', email)
         .maybeSingle();
       if (vipEntry) {
-        setVipStatus({ isVip: true, vipPlan: vipEntry.plan as SubscriptionPlan, reason: vipEntry.reason || '' });
+        setVipStatus({ isVip: true, vipPlan: vipEntry.plan as SubscriptionPlan, reason: vipEntry.reason || '', badge: vipEntry.badge });
       } else {
-        setVipStatus({ isVip: false, vipPlan: null, reason: '' });
+        setVipStatus({ isVip: false, vipPlan: null, reason: '', badge: null });
       }
 
       // 3. SERVER-SIDE device lock check
@@ -182,6 +206,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .eq('id', userId)
         .maybeSingle();
 
+      if (existingProfile?.is_suspended) {
+        setDeviceLockError('Contul tău a fost suspendat. Contactează administratorul aplicației.');
+        await supabase.auth.signOut();
+        setSession(null);
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
+
       if (existingProfile) {
         setProfile(existingProfile as Profile);
       } else {
@@ -192,7 +225,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             id: userId,
             email: email,
             breeder_name: email.split('@')[0],
-            subscription_plan: 'trial',
           })
           .select()
           .single();
@@ -217,15 +249,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (data) setProfile(data as Profile);
   }, [session]);
 
-  const updatePlan = useCallback(async (plan: SubscriptionPlan) => {
-    if (!session?.user?.id) return;
-    await supabase
-      .from('profiles')
-      .update({ subscription_plan: plan })
-      .eq('id', session.user.id);
-    await refreshProfile();
-  }, [session, refreshProfile]);
-
   const setPigeonType = useCallback(async (type: PigeonType) => {
     if (!session?.user?.id) return;
     const { error } = await supabase.rpc('set_pigeon_type', { p_type: type });
@@ -244,8 +267,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { error } = await supabase.rpc('set_pigeon_categories', { p_categories: categories });
     if (error) {
       // Fallback: derive type and update directly
-      const hasRacing = categories.some(c => c.startsWith('racing_'));
-      const hasFancy = categories.some(c => c.startsWith('fancy_'));
+      const hasRacing = categories.includes('voiajori');
+      const hasFancy = categories.includes('frumusete') || categories.includes('joc_zbor');
       const derivedType = hasRacing && hasFancy ? 'both' : hasRacing ? 'racing' : hasFancy ? 'fancy' : null;
       await supabase
         .from('profiles')
@@ -286,7 +309,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setSession(null);
     setProfile(null);
     setIsAdmin(false);
-    setVipStatus({ isVip: false, vipPlan: null, reason: '' });
+    setVipStatus({ isVip: false, vipPlan: null, reason: '', badge: null });
     setDeviceLockError(null);
   };
 
@@ -298,6 +321,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         loading,
         isAdmin,
         isVip: vipStatus.isVip,
+        isAmbassador: commissionRole === 'ambassador',
+        isPartner: commissionRole === 'partner',
+        commissionRole,
         vipPlan: vipStatus.vipPlan,
         effectivePlan,
         deviceId,
@@ -311,7 +337,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         signIn,
         signOut,
         refreshProfile,
-        updatePlan,
       }}
     >
       {children}

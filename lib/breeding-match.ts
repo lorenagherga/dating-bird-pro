@@ -14,6 +14,7 @@ export interface BreedingPigeon {
   dam_id: string | null;
   is_champion: boolean;
   game_style: string | null;
+  breed: string | null;
   photo_url: string | null;
 }
 
@@ -40,6 +41,14 @@ export interface AncestorNode {
   dam_id: string | null;
 }
 
+export interface MatchCriteria {
+  avoidKinship: boolean;
+  rewardPerformance: boolean;
+  sameGameStyle: boolean;
+  sameBreed: boolean;
+  longDistance: boolean;
+}
+
 export interface PairScore {
   male: BreedingPigeon;
   female: BreedingPigeon;
@@ -53,10 +62,11 @@ export interface PairScore {
   warnings: string[];
   strengths: string[];
   recommended: boolean;
-  rationale: string;
+  reasons: string[];
 }
 
 const INBREEDING_LIMIT = 0.0625; // 6.25% = first cousin level
+const LONG_DISTANCE_KM = 300;
 
 export function buildAncestorMap(pigeons: BreedingPigeon[], rootId: string, maxDepth: number = 6): Map<string, AncestorNode> {
   const map = new Map<string, AncestorNode>();
@@ -85,7 +95,6 @@ function computePerformanceScore(
   const wins = records.filter(r => r.position === 1).length;
   const podiums = records.filter(r => r.position <= 3).length;
 
-  // Performance score: weighted wins and podiums
   let perfScore = 0;
   for (const r of records) {
     if (r.position === 1) perfScore += 30;
@@ -93,12 +102,10 @@ function computePerformanceScore(
     else if (r.position <= 10) perfScore += 8;
     else if (r.position <= 50) perfScore += 3;
 
-    // Bonus for large races
     if (r.birds_released && r.birds_released > 500) perfScore += 5;
     if (r.birds_released && r.birds_released > 1000) perfScore += 5;
   }
 
-  // Historical breeding success
   const offspringNests = nests.filter(n => n.male_ring === ring || n.female_ring === ring);
   const offspringCount = offspringNests.length;
   const successfulHatches = offspringNests.filter(n => n.chick_count && n.chick_count > 0).length;
@@ -106,7 +113,6 @@ function computePerformanceScore(
     ? offspringNests.reduce((sum, n) => sum + (n.chick_count || 0), 0) / offspringNests.length
     : 0;
 
-  // Breeding success bonus
   if (offspringCount > 0) {
     perfScore += Math.min(successfulHatches * 10, 30);
     perfScore += Math.min(avgChicks * 5, 20);
@@ -127,10 +133,8 @@ function computeColorComplementarity(maleColor: string, femaleColor: string): { 
   const mc = maleColor.toLowerCase();
   const fc = femaleColor.toLowerCase();
 
-  // Same color = less genetic diversity in color expression
   if (mc === fc) return { score: 30, note: 'same_color' };
 
-  // Complementary pairs that produce diverse offspring
   const complementaryPairs: [string[], string[], number][] = [
     [['albastru', 'blue', 'blau', 'blauw'], ['roșu', 'red', 'rot', 'rood', 'rouge', 'rojo'], 90],
     [['albastru', 'blue'], ['argintiu', 'silver', 'silber', 'zilver', 'argent'], 85],
@@ -145,20 +149,17 @@ function computeColorComplementarity(maleColor: string, femaleColor: string): { 
     const maleMatch = maleGroup.some(c => mc.includes(c));
     const femaleMatch = femaleGroup.some(c => fc.includes(c));
     if (maleMatch && femaleMatch) return { score, note: 'complementary' };
-    // Also check reverse
     const maleMatch2 = femaleGroup.some(c => mc.includes(c));
     const femaleMatch2 = maleGroup.some(c => fc.includes(c));
     if (maleMatch2 && femaleMatch2) return { score, note: 'complementary' };
   }
 
-  // Different colors but not specifically complementary
   return { score: 60, note: 'diverse' };
 }
 
 function computeStyleCompatibility(maleStyle: string | null, femaleStyle: string | null): number {
   if (!maleStyle || !femaleStyle) return 50;
-  if (maleStyle === femaleStyle) return 85; // Same racing style = focused offspring
-  // Speed + Endurance = all-round offspring
+  if (maleStyle === femaleStyle) return 85;
   if (
     (maleStyle === 'Viteza' && femaleStyle === 'Rezistență') ||
     (maleStyle === 'Rezistență' && femaleStyle === 'Viteza')
@@ -173,21 +174,19 @@ export function scoreAllPairs(
   females: BreedingPigeon[],
   allPigeons: BreedingPigeon[],
   palmares: PalmaresRecord[],
-  nests: NestRecord[]
+  nests: NestRecord[],
+  criteria: MatchCriteria
 ): PairScore[] {
   const results: PairScore[] = [];
 
   for (const male of males) {
     for (const female of females) {
-      const score = scorePair(male, female, allPigeons, palmares, nests);
-      results.push(score);
+      results.push(scorePair(male, female, allPigeons, palmares, nests, criteria));
     }
   }
 
-  // Sort by total score descending
   results.sort((a, b) => b.totalScore - a.totalScore);
 
-  // Mark top 3 as recommended
   results.forEach((r, i) => {
     r.recommended = i < 3 && r.warnings.length === 0;
   });
@@ -200,9 +199,9 @@ export function scorePair(
   female: BreedingPigeon,
   allPigeons: BreedingPigeon[],
   palmares: PalmaresRecord[],
-  nests: NestRecord[]
+  nests: NestRecord[],
+  criteria: MatchCriteria
 ): PairScore {
-  // 1. Genetic score — inbreeding + diversity
   const maleAncestors = buildAncestorMap(allPigeons, male.id);
   const femaleAncestors = buildAncestorMap(allPigeons, female.id);
   const pedigree = new Map<string, PedigreeEntry>();
@@ -216,68 +215,66 @@ export function scorePair(
   const warnings: string[] = [];
   const strengths: string[] = [];
 
-  if (inbreedingCoeff > 0) {
-    // Penalty proportional to inbreeding
-    geneticScore -= inbreedingCoeff * 400; // 6.25% → -25 points, 12.5% → -50 points
+  if (criteria.avoidKinship) {
+    if (inbreedingCoeff > 0) geneticScore -= inbreedingCoeff * 400;
+    if (inbreedingCoeff > INBREEDING_LIMIT) {
+      warnings.push('high_inbreeding');
+      geneticScore -= 20;
+    } else if (inbreedingCoeff > 0) {
+      strengths.push('controlled_linebreeding');
+    } else {
+      strengths.push('no_inbreeding');
+    }
   }
 
-  if (inbreedingCoeff > INBREEDING_LIMIT) {
-    warnings.push('high_inbreeding');
-    geneticScore -= 20;
-  } else if (inbreedingCoeff > 0 && inbreedingCoeff <= INBREEDING_LIMIT) {
-    strengths.push('controlled_linebreeding');
-  } else if (inbreedingCoeff === 0) {
-    strengths.push('no_inbreeding');
-  }
-
-  // 2. Performance score — historical results of both parents
   const malePerf = computePerformanceScore(male.id, palmares, nests, male.ring_series || '');
   const femalePerf = computePerformanceScore(female.id, palmares, nests, female.ring_series || '');
+  const performanceScore = criteria.rewardPerformance ? (malePerf.score + femalePerf.score) / 2 : 50;
 
-  const performanceScore = (malePerf.score + femalePerf.score) / 2;
+  if (malePerf.wins > 0 || femalePerf.wins > 0) strengths.push('champion_parents');
+  if (malePerf.podiums > 2 || femalePerf.podiums > 2) strengths.push('proven_performers');
+  if (malePerf.offspringCount > 0 && malePerf.avgChicks >= 2) strengths.push('proven_breeder_male');
+  if (femalePerf.offspringCount > 0 && femalePerf.avgChicks >= 2) strengths.push('proven_breeder_female');
 
-  if (malePerf.wins > 0 || femalePerf.wins > 0) {
-    strengths.push('champion_parents');
-  }
-  if (malePerf.podiums > 2 || femalePerf.podiums > 2) {
-    strengths.push('proven_performers');
-  }
-  if (malePerf.offspringCount > 0 && malePerf.avgChicks >= 2) {
-    strengths.push('proven_breeder_male');
-  }
-  if (femalePerf.offspringCount > 0 && femalePerf.avgChicks >= 2) {
-    strengths.push('proven_breeder_female');
-  }
-
-  // 3. Compatibility score — color + style
   const colorComp = computeColorComplementarity(male.color || '', female.color || '');
-  const styleComp = computeStyleCompatibility(male.game_style, female.game_style);
+  const sameStyle = !!male.game_style && male.game_style === female.game_style;
+  const styleComp = criteria.sameGameStyle
+    ? (sameStyle ? 100 : 30)
+    : computeStyleCompatibility(male.game_style, female.game_style);
 
-  const compatibilityScore = (colorComp.score * 0.4 + styleComp * 0.6);
+  const longRuns = [male.id, female.id].filter(id =>
+    palmares.some(r => r.pigeon_id === id && (r.distance_km ?? 0) >= LONG_DISTANCE_KM)
+  ).length;
+
+  let compatibilityScore = colorComp.score * 0.4 + styleComp * 0.6;
+  if (criteria.longDistance) compatibilityScore += longRuns * 10;
+  const sameBreed = !!male.breed && male.breed === female.breed;
+  if (criteria.sameBreed && sameBreed) compatibilityScore += 15;
+  compatibilityScore = Math.min(100, compatibilityScore);
 
   const complementarity: string[] = [];
   if (colorComp.note === 'complementary') complementarity.push('color_complementary');
   if (styleComp >= 85) complementarity.push('style_synergy');
   if (male.is_champion && female.is_champion) complementarity.push('double_champion');
 
-  // Weighted total: genetic 35%, performance 40%, compatibility 25%
   const totalScore = Math.round(
     geneticScore * 0.35 +
     performanceScore * 0.40 +
     compatibilityScore * 0.25
   );
 
-  // Build rationale
-  const rationaleParts: string[] = [];
-  if (inbreedingCoeff === 0) {
-    rationaleParts.push('no_inbreeding_rationale');
-  } else if (inbreedingCoeff <= INBREEDING_LIMIT) {
-    rationaleParts.push('linebreeding_rationale');
-  } else {
-    rationaleParts.push('high_inbreeding_rationale');
+  const reasons: string[] = [];
+  if (criteria.avoidKinship) {
+    if (inbreedingCoeff === 0) reasons.push('bmReasonNoKinship');
+    else if (inbreedingCoeff <= INBREEDING_LIMIT) reasons.push('bmReasonControlledKinship');
+    else reasons.push('bmReasonKinshipRisk');
   }
-  if (malePerf.wins + femalePerf.wins > 0) rationaleParts.push('winner_parents_rationale');
-  if (complementarity.length > 0) rationaleParts.push('complementary_rationale');
+  if (criteria.rewardPerformance) {
+    if (malePerf.wins + femalePerf.wins > 0) reasons.push('bmReasonTopPerf');
+    else if (malePerf.podiums + femalePerf.podiums > 0) reasons.push('bmReasonPodiums');
+  }
+  if (criteria.sameGameStyle && sameStyle) reasons.push('bmReasonSameStyle');
+  if (criteria.longDistance && longRuns > 0) reasons.push('bmReasonLongDistance');
 
   return {
     male,
@@ -286,12 +283,12 @@ export function scorePair(
     geneticScore: Math.max(0, Math.min(100, Math.round(geneticScore))),
     performanceScore: Math.round(performanceScore),
     compatibilityScore: Math.round(compatibilityScore),
-    inbreedingCoeff: Math.round(inbreedingCoeff * 10000) / 100, // percentage with 2 decimals
+    inbreedingCoeff: Math.round(inbreedingCoeff * 10000) / 100,
     sharedAncestors,
     complementarity,
     warnings,
     strengths,
     recommended: false,
-    rationale: rationaleParts.join(','),
+    reasons,
   };
 }
