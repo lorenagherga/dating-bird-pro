@@ -37,14 +37,20 @@ export default function PalmaresScreen() {
   });
 
   const loadResults = useCallback(async () => {
-    if (!pigeonId) return;
-    const { data } = await supabase
-      .from('pigeon_palmares')
-      .select('*')
-      .eq('pigeon_id', pigeonId)
-      .order('year', { ascending: false });
-    setResults((data || []) as PigeonPalmares[]);
-    setLoading(false);
+    try {
+      if (!pigeonId) return;
+      const { data, error } = await supabase
+        .from('pigeon_palmares')
+        .select('*')
+        .eq('pigeon_id', pigeonId)
+        .order('year', { ascending: false });
+      if (error) throw error;
+      setResults((data || []) as PigeonPalmares[]);
+    } catch {
+      setResults([]);
+    } finally {
+      setLoading(false);
+    }
   }, [pigeonId]);
 
   useEffect(() => {

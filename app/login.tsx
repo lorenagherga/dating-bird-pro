@@ -15,6 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows } from '@/lib/theme';
 import { ShieldAlert } from 'lucide-react-native';
+import { LanguagePicker } from '@/components/LanguagePicker';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function LoginScreen() {
@@ -61,6 +62,9 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.topRow}>
+            <LanguagePicker />
+          </View>
           <View style={styles.header}>
             <View style={styles.logoCircle}>
               <Text style={styles.logoText}>DBP</Text>
@@ -136,6 +140,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
   },
+  topRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   header: {
     alignItems: 'center',
     marginBottom: 44,

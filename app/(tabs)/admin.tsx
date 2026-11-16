@@ -8,11 +8,27 @@ import {
   ActivityIndicator,
   Alert,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { Shield, Trash2, CircleDot, Clock, CheckCircle, Inbox, Users, Check, X as XIcon } from 'lucide-react-native';
+import { AdminUsersCenter } from '@/components/AdminUsersCenter';
+import { AdminCommissionCard } from '@/components/AdminCommissionCard';
+import { AdminPartnerDirectoryCard } from '@/components/AdminPartnerDirectoryCard';
+import { AdminCommissionWalletCard } from '@/components/AdminCommissionWalletCard';
+import { AdminWalletTopUpRequests } from '@/components/AdminWalletTopUpRequests';
+import { AdminAuctionModeration } from '@/components/AdminAuctionModeration';
+import { AdminFreeLaunchCard } from '@/components/AdminFreeLaunchCard';
+import { AdminInviteProgramCard } from '@/components/AdminInviteProgramCard';
+import { AdminInviteEvidence } from '@/components/AdminInviteEvidence';
+import { AdminAnnouncementCard } from '@/components/AdminAnnouncementCard';
+import { AdminUserReports } from '@/components/AdminUserReports';
+import { AdminProPricingCard } from '@/components/AdminProPricingCard';
+import { AdminPromotionCard } from '@/components/AdminPromotionCard';
+import { isSuperAdminEmail } from '@/lib/commission';
+import { ChevronRight, Receipt, Shield, Trash2, CircleDot, Clock, CheckCircle, Inbox, Users, Check, X as XIcon } from 'lucide-react-native';
 
 interface SupportTicket {
   id: string;
@@ -35,6 +51,16 @@ interface PartnerRequestRow {
   created_at: string;
 }
 
+type AdminTab = 1 | 2 | 3 | 4 | 5;
+
+const ADMIN_TABS: { key: AdminTab; ro: string; en: string }[] = [
+  { key: 1, ro: 'Utilizatori', en: 'Users' },
+  { key: 2, ro: 'Cluburi & Parteneri', en: 'Clubs & Partners' },
+  { key: 3, ro: 'Financiar & Taxe', en: 'Finance & Fees' },
+  { key: 4, ro: 'Licitații', en: 'Auctions' },
+  { key: 5, ro: 'Conținut & Anunțuri', en: 'Content & Notices' },
+];
+
 function formatDate(dateStr: string, lang: string): string {
   const d = new Date(dateStr);
   return d.toLocaleDateString(lang === 'ro' ? 'ro-RO' : 'en-US', {
@@ -48,11 +74,15 @@ function formatDate(dateStr: string, lang: string): string {
 
 export default function AdminPanelScreen() {
   const { t, language } = useLanguage();
+  const router = useRouter();
+  const { session } = useAuth();
+  const isSuperAdmin = isSuperAdminEmail(session?.user?.email);
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'new' | 'in_progress' | 'resolved'>('all');
   const [partnerRequests, setPartnerRequests] = useState<PartnerRequestRow[]>([]);
   const [partnerLoading, setPartnerLoading] = useState(true);
+  const [tab, setTab] = useState<AdminTab>(1);
 
   const loadTickets = useCallback(async () => {
     setLoading(true);
@@ -172,6 +202,35 @@ export default function AdminPanelScreen() {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <ScreenHeader title={t('adminPanel')} subtitle={t('adminPanelSub')} showBack />
+
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.tabBarScroll}
+          contentContainerStyle={styles.tabBar}
+        >
+          {ADMIN_TABS.map((item) => (
+            <TouchableOpacity
+              key={item.key}
+              style={[styles.tabItem, tab === item.key && styles.tabItemActive]}
+              onPress={() => setTab(item.key)}
+              accessibilityRole="tab"
+              activeOpacity={0.8}
+            >
+              <Text style={[styles.tabItemText, tab === item.key && styles.tabItemTextActive]}>
+                {`${item.key}. ${language === 'ro' ? item.ro : item.en}`}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {tab === 1 && <AdminUsersCenter />}
+
+        {tab === 5 && (
+          <>
+        <AdminAnnouncementCard />
+
+        <AdminUserReports />
 
         <View style={styles.statsRow}>
           <View style={[styles.statCard, styles.statCardGold]}>
@@ -297,6 +356,11 @@ export default function AdminPanelScreen() {
           </View>
         )}
 
+          </>
+        )}
+
+        {tab === 2 && (
+          <>
         {/* Partner Requests Section */}
         <View style={styles.partnerSection}>
           <View style={styles.partnerSectionHeader}>
@@ -353,6 +417,44 @@ export default function AdminPanelScreen() {
             </View>
           )}
         </View>
+
+        <AdminPartnerDirectoryCard />
+          </>
+        )}
+
+        {tab === 3 && (
+          <>
+        <AdminFreeLaunchCard />
+
+        <AdminInviteProgramCard />
+
+        <AdminInviteEvidence />
+
+        {isSuperAdmin && (
+          <TouchableOpacity
+            style={styles.reportEntry}
+            onPress={() => router.push('/(tabs)/commission-report' as any)}
+            accessibilityRole="button"
+          >
+            <Receipt color={Colors.royalBlue} size={20} />
+            <Text style={styles.reportEntryText}>{t('commissionReportEntry')}</Text>
+            <ChevronRight color={Colors.royalBlue} size={18} />
+          </TouchableOpacity>
+        )}
+
+        {isSuperAdmin && <AdminProPricingCard />}
+
+        {isSuperAdmin && <AdminPromotionCard />}
+
+        <AdminCommissionCard />
+
+        <AdminCommissionWalletCard />
+
+        <AdminWalletTopUpRequests />
+          </>
+        )}
+
+        {tab === 4 && <AdminAuctionModeration />}
       </ScrollView>
     </View>
   );
@@ -361,6 +463,19 @@ export default function AdminPanelScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: Colors.background },
   scrollContent: { padding: 24, paddingBottom: 40 },
+  tabBarScroll: { marginBottom: 20, marginHorizontal: -24 },
+  tabBar: { paddingHorizontal: 24, gap: 8 },
+  tabItem: {
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: Colors.white,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+  },
+  tabItemActive: { backgroundColor: Colors.royalBlue, borderColor: Colors.royalBlue },
+  tabItemText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.textSecondary },
+  tabItemTextActive: { color: Colors.white },
   statsRow: {
     flexDirection: 'row',
     gap: 12,
@@ -556,6 +671,23 @@ const styles = StyleSheet.create({
   actionBtnText: {
     fontFamily: 'Inter-Medium',
     fontSize: 12,
+    color: Colors.royalBlue,
+  },
+  reportEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 24,
+    backgroundColor: Colors.white,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.royalBlue,
+  },
+  reportEntryText: {
+    flex: 1,
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 15,
     color: Colors.royalBlue,
   },
   emptyState: {

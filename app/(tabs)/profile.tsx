@@ -13,12 +13,22 @@ import {
 } from 'react-native';
 import { useAuth } from '@/lib/auth-context';
 import { Colors } from '@/lib/theme';
-import { PLAN_LABELS, PLAN_PRICES, PLAN_LIMITS, TRIAL_DAYS, SubscriptionPlan } from '@/lib/types';
+import { PLAN_LABELS, TRIAL_PRICE_LABEL, PLAN_LIMITS, TRIAL_DAYS, SubscriptionPlan } from '@/lib/types';
+import { AmbassadorBadge } from '@/components/AmbassadorBadge';
+import { PartnerBadge } from '@/components/PartnerBadge';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { PdfExportSection } from '@/components/PdfExportSection';
+import { ProfileCategorySettings } from '@/components/ProfileCategorySettings';
+import { InviteFriendsCard } from '@/components/InviteFriendsCard';
 import { Crown, Check, LogOut, Shield, Star, Trash2, UserPlus, X, Bell, Unlock, Eye, MessageSquarePlus, ChevronRight, Users } from 'lucide-react-native';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/lib/language-context';
 import { LANGUAGE_LIST, Language } from '@/lib/i18n';
+import { router } from 'expo-router';
+import { AccountDetailsCard } from '@/components/AccountDetailsCard';
+import { CommissionWalletCard } from '@/components/CommissionWalletCard';
+import { AccountPasswordCard } from '@/components/AccountPasswordCard';
+import { DeleteAccountButton } from '@/components/DeleteAccountButton';
 
 interface VipEntry {
   id: string;
@@ -46,9 +56,8 @@ interface PartnerEntry {
 }
 
 export default function ProfileScreen() {
-  const { profile, signOut, isAdmin, isVip, vipPlan, effectivePlan, updatePlan } = useAuth();
+  const { profile, signOut, isAdmin, isVip, isAmbassador, isPartner, vipPlan, effectivePlan } = useAuth();
   const [pigeonCount, setPigeonCount] = useState(0);
-  const [upgrading, setUpgrading] = useState(false);
   const [vipList, setVipList] = useState<VipEntry[]>([]);
   const [vipLoading, setVipLoading] = useState(false);
   const [showVipModal, setShowVipModal] = useState(false);
@@ -70,6 +79,11 @@ export default function ProfileScreen() {
   const limits = PLAN_LIMITS[effectivePlan];
   const isPro = effectivePlan === 'pro';
   const isTrial = effectivePlan === 'trial';
+  const proExpiryText = profile?.subscription_plan === 'pro'
+    ? (profile.pro_expires_at
+      ? t('proExpiresOn').replace('{date}', new Date(profile.pro_expires_at).toLocaleDateString(language === 'ro' ? 'ro-RO' : 'en-US', { day: '2-digit', month: '2-digit', year: 'numeric' }))
+      : t('proNoExpiry'))
+    : null;
 
   const loadData = useCallback(async () => {
     const { count } = await supabase
@@ -130,26 +144,6 @@ export default function ProfileScreen() {
         });
     }
   }, [loadData, isAdmin, loadVipList, loadAdminNotifications, loadPartners, profile?.email]);
-
-  const handleUpgrade = async (newPlan: SubscriptionPlan) => {
-    if (newPlan === plan) return;
-    Alert.alert(
-      t('confirmPlan'),
-      `${t('confirmPlanMsg')} ${PLAN_LABELS[newPlan]} (${PLAN_PRICES[newPlan]})?`,
-      [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('confirm'),
-          onPress: async () => {
-            setUpgrading(true);
-            await updatePlan(newPlan);
-            setUpgrading(false);
-            Alert.alert(t('success'), `${t('planUpdated')} ${PLAN_LABELS[newPlan]}.`);
-          },
-        },
-      ]
-    );
-  };
 
   const handleSendSupport = async () => {
     if (!supportMessage.trim()) {
@@ -259,7 +253,11 @@ export default function ProfileScreen() {
             <Crown color={Colors.royalBlue} size={28} />
           </View>
           <View style={styles.profileInfo}>
-            <Text style={styles.profileName}>{profile?.breeder_name}</Text>
+            <View style={styles.profileNameRow}>
+              <Text style={styles.profileName}>{profile?.breeder_name}</Text>
+              {isAmbassador && <AmbassadorBadge size={16} />}
+              {isPartner && <PartnerBadge size={16} />}
+            </View>
             <Text style={styles.profileEmail}>{profile?.email}</Text>
           </View>
         </View>
@@ -274,7 +272,7 @@ export default function ProfileScreen() {
         {isVip && !isAdmin && (
           <View style={styles.vipBadge}>
             <Star color={Colors.white} size={16} />
-            <Text style={styles.vipText}>{t('vipMember')} {PLAN_LABELS.pro}</Text>
+            <Text style={styles.vipText}>{isAmbassador ? t('ambassadorTitle') : `${t('vipMember')} ${PLAN_LABELS.pro}`}</Text>
           </View>
         )}
 
@@ -288,6 +286,12 @@ export default function ProfileScreen() {
           </View>
         </View>
 
+        <PdfExportSection />
+
+        <ProfileCategorySettings />
+
+        <InviteFriendsCard />
+
         <Text style={styles.sectionTitle}>
           {t('yourPlan')} {PLAN_LABELS[effectivePlan]}
           {isVip && plan !== effectivePlan && (
@@ -300,7 +304,7 @@ export default function ProfileScreen() {
           <View style={styles.planHeader}>
             <View>
               <Text style={styles.planName}>{PLAN_LABELS.trial}</Text>
-              <Text style={styles.planPrice}>{PLAN_PRICES.trial}</Text>
+              <Text style={styles.planPrice}>{TRIAL_PRICE_LABEL}</Text>
             </View>
             {isTrial && (
               <View style={styles.currentBadge}>
@@ -328,7 +332,12 @@ export default function ProfileScreen() {
           <View style={styles.planHeader}>
             <View>
               <Text style={[styles.planName, isPro && styles.planNameLight]}>{PLAN_LABELS.pro}</Text>
-              <Text style={[styles.planPrice, isPro && styles.planPriceLight]}>{PLAN_PRICES.pro}</Text>
+              <Text style={[styles.planPrice, isPro && styles.planPriceLight]}>
+                Acces Gratuit în Perioada de Lansare — 0 lei acum (Preț standard ulterior: 70 lei / an)
+              </Text>
+              {proExpiryText && (
+                <Text style={[styles.planPrice, isPro && styles.planPriceLight]}>{proExpiryText}</Text>
+              )}
             </View>
             {isPro ? (
               <View style={styles.currentBadgeLight}>
@@ -349,17 +358,9 @@ export default function ProfileScreen() {
             ))}
           </View>
           {!isPro && (
-            <TouchableOpacity
-              style={[styles.upgradeButton, upgrading && styles.upgradeButtonDisabled]}
-              onPress={() => handleUpgrade('pro')}
-              disabled={upgrading}
-            >
-              {upgrading ? (
-                <ActivityIndicator color={Colors.royalBlueDark} size="small" />
-              ) : (
-                <Text style={styles.upgradeButtonTextDark}>{t('unlockPro')}</Text>
-              )}
-            </TouchableOpacity>
+            <View style={styles.trialInfoBox}>
+              <Text style={styles.trialInfoText}>{t('proActivationInfo')}</Text>
+            </View>
           )}
         </View>
 
@@ -559,10 +560,30 @@ export default function ProfileScreen() {
           <ChevronRight color={Colors.textLight} size={20} />
         </TouchableOpacity>
 
+        <View style={styles.accountSection}>
+          <CommissionWalletCard />
+          <AccountDetailsCard />
+          <AccountPasswordCard />
+        </View>
+
+        <View style={styles.legalRow}>
+          <TouchableOpacity onPress={() => router.push('/privacy')} accessibilityRole="link">
+            <Text style={styles.legalLink}>{t('privacyPolicy')}</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalDot}>•</Text>
+          <TouchableOpacity onPress={() => router.push('/terms')} accessibilityRole="link">
+            <Text style={styles.legalLink}>{t('termsConditions')}</Text>
+          </TouchableOpacity>
+        </View>
+
         <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
           <LogOut color={Colors.error} size={20} />
           <Text style={styles.signOutText}>{t('signOut')}</Text>
         </TouchableOpacity>
+
+        <View style={styles.deleteSection}>
+          <DeleteAccountButton />
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -691,6 +712,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   profileInfo: { flex: 1 },
+  profileNameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   profileName: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.text },
   profileEmail: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textSecondary, marginTop: 2 },
   adminBadge: {
@@ -786,14 +808,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
   },
   trialInfoText: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.goldDark },
-  upgradeButton: {
-    backgroundColor: Colors.gold,
-    borderRadius: 14,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  upgradeButtonDisabled: { opacity: 0.6 },
-  upgradeButtonTextDark: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.royalBlueDark },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -854,6 +868,11 @@ const styles = StyleSheet.create({
     color: Colors.royalBlue,
   },
   signOutText: { fontFamily: 'Inter-SemiBold', fontSize: 16, color: Colors.error },
+  accountSection: { gap: 16, marginTop: 24 },
+  legalRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, marginTop: 24 },
+  legalLink: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.royalBlue, textDecorationLine: 'underline' },
+  legalDot: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.textLight },
+  deleteSection: { marginTop: 16 },
   vipBadge: {
     flexDirection: 'row',
     alignItems: 'center',

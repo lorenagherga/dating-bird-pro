@@ -17,25 +17,32 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import {
-  useCountdown,
-  formatLiveCountdown,
-  isUrgent,
-  shouldExtendEndTime,
-  ANTI_SNIPE_EXTENSION_MS,
-} from '@/lib/auction-utils';
+import { calculateCommission, fetchAuctionCommissionRate } from '@/lib/commission';
+import { fetchPublicProfiles, PublicProfile } from '@/lib/public-profiles';
+import { AmbassadorBadge } from '@/components/AmbassadorBadge';
+import { useCountdown, isUrgent } from '@/lib/auction-utils';
+import { useAutoCloseAuction } from '@/lib/use-auction-autoclose';
+import { AuctionCountdown } from '@/components/AuctionCountdown';
+import { AuctionHandoverCard } from '@/components/AuctionHandoverCard';
+import { AuctionQuestions } from '@/components/AuctionQuestions';
+import { UserSafetyActions } from '@/components/UserSafetyActions';
 import {
   Gavel, TrendingUp, Clock, Trophy, ChevronRight, Crown,
   Bird, User, Award, FileText, CheckCircle2, AlertCircle, X, Mars, Venus,
-  Zap, Flame, Shield,
+  Zap, Flame, Shield, Trash2, Megaphone,
 } from 'lucide-react-native';
+import {
+  fetchPromotionFee,
+  getPromotionText,
+  requestAuctionPromotion,
+} from '@/lib/promotion';
 
 interface BidRow {
   id: string;
   amount: number;
   bidder_id: string;
   created_at: string;
-  bidder: { breeder_name: string } | null;
+  bidder: PublicProfile | null;
 }
 
 interface AuctionDetail {
@@ -51,6 +58,9 @@ interface AuctionDetail {
   seller_id: string;
   winner_id: string | null;
   buy_now_price: number | null;
+  commission_rate_accepted: number | null;
+  is_promoted: boolean;
+  promotion_requested: boolean;
   pigeon: {
     id: string;
     ring_series: string;
@@ -61,13 +71,14 @@ interface AuctionDetail {
     photo_url: string | null;
     notes: string;
   } | null;
-  seller: { breeder_name: string; email: string } | null;
+  seller: PublicProfile | null;
 }
 
 export default function AuctionDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { t } = useLanguage();
-  const { profile, isAdmin } = useAuth();
+  const { t, language } = useLanguage();
+  const promoText = getPromotionText(language);
+  const { profile, isAdmin, isAmbassador } = useAuth();
   const router = useRouter();
   const [auction, setAuction] = useState<AuctionDetail | null>(null);
   const [bids, setBids] = useState<BidRow[]>([]);
@@ -80,10 +91,17 @@ export default function AuctionDetailScreen() {
   const [outbidRing, setOutbidRing] = useState('');
   const [antiSnipeMsg, setAntiSnipeMsg] = useState(false);
   const [buyNowModal, setBuyNowModal] = useState(false);
+  const [promoFee, setPromoFee] = useState<number | null>(null);
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoError, setPromoError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchPromotionFee().then(setPromoFee).catch(() => setPromoFee(null));
+  }, []);
   const [buyNowProcessing, setBuyNowProcessing] = useState(false);
   const [buyNowSuccess, setBuyNowSuccess] = useState(false);
-  const prevTopBidRef = useRef<number | null>(null);
-  const myLastBidRef = useRef<number | null>(null);
+  const [commissionRate, setCommissionRate] = useState<number | null>(null);
+  const topBidderRef = useRef<string | null>(null);
 
   const loadAuction = useCallback(async () => {
     if (!id) return;
@@ -91,29 +109,35 @@ export default function AuctionDetailScreen() {
       .from('auctions')
       .select(`
         id, title, description, starting_price, current_price, min_bid_step, end_time,
-        bid_count, status, seller_id, winner_id, buy_now_price,
-        pigeon:pigeons(id, ring_series, color, sex, is_champion, year, photo_url, notes),
-        seller:profiles!auctions_seller_id_profiles_fkey(breeder_name, email)
+        bid_count, status, seller_id, winner_id, buy_now_price, commission_rate_accepted, is_promoted, promotion_requested
       `)
       .eq('id', id)
       .maybeSingle();
-    setAuction(data as unknown as AuctionDetail);
 
     const { data: bidData } = await supabase
       .from('auction_bids')
-      .select(`
-        id, amount, bidder_id, created_at,
-        bidder:profiles!auction_bids_bidder_id_profiles_fkey(breeder_name)
-      `)
+      .select('id, amount, bidder_id, created_at')
       .eq('auction_id', id)
-      .order('amount', { ascending: false });
-    setBids((bidData || []) as unknown as BidRow[]);
+      .order('created_at', { ascending: false });
+    const sortedBids = (bidData || []) as unknown as BidRow[];
+    const people = await fetchPublicProfiles([data?.seller_id, ...sortedBids.map((bid) => bid.bidder_id)]);
+    const { data: pigeonData } = await supabase.rpc('get_auction_pigeon', { p_auction_id: id });
+    const auctionRow = data
+      ? ({ ...data, pigeon: (pigeonData as AuctionDetail['pigeon']) ?? null } as unknown as AuctionDetail)
+      : null;
+    setAuction(auctionRow && { ...auctionRow, seller: people.get(auctionRow.seller_id) ?? null });
+    topBidderRef.current = sortedBids[0]?.bidder_id ?? null;
+    setBids(sortedBids.map((bid) => ({ ...bid, bidder: people.get(bid.bidder_id) ?? null })));
     setLoading(false);
   }, [id]);
 
   useEffect(() => {
     loadAuction();
   }, [loadAuction]);
+
+  useEffect(() => {
+    fetchAuctionCommissionRate().then(setCommissionRate).catch(() => setCommissionRate(null));
+  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -123,18 +147,21 @@ export default function AuctionDetailScreen() {
         loadAuction();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'auction_bids', filter: `auction_id=eq.${id}` }, (payload) => {
-        const newBid = payload.new as any;
-        if (myLastBidRef.current !== null && newBid.amount > myLastBidRef.current && newBid.bidder_id !== profile?.id) {
+        const newBid = payload.new as { bidder_id: string };
+        if (topBidderRef.current === profile?.id && newBid.bidder_id !== profile?.id) {
           setOutbidRing(auction?.pigeon?.ring_series || '');
           setOutbidAlert(true);
           setTimeout(() => setOutbidAlert(false), 6000);
         }
-        myLastBidRef.current = null;
         loadAuction();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id, loadAuction, profile?.id, auction?.pigeon?.ring_series]);
+
+  const remaining = useCountdown(auction?.end_time ?? new Date(0).toISOString());
+
+  useAutoCloseAuction(auction?.id, auction?.status, remaining.ended, loadAuction);
 
   if (loading) {
     return (
@@ -157,13 +184,32 @@ export default function AuctionDetailScreen() {
     );
   }
 
-  const remaining = useCountdown(auction.end_time);
   const urgent = isUrgent(remaining);
-  const isEnded = auction.status === 'ended' || remaining.ended;
+  const isEnded = auction.status !== 'active' || remaining.ended;
   const isOwner = auction.seller_id === profile?.id;
   const minBid = auction.current_price + auction.min_bid_step;
   const isWinner = auction.winner_id === profile?.id;
+  const winnerName = auction.winner_id
+    ? bids.find((b) => b.bidder_id === auction.winner_id)?.bidder?.breeder_name ?? null
+    : null;
+  const canManage = isOwner || isAdmin;
   const hasBuyNow = auction.buy_now_price !== null && auction.buy_now_price > 0;
+  const promoIsFree = isAdmin || isAmbassador;
+  const sellerCommissionRate = auction.commission_rate_accepted ?? commissionRate ?? 0;
+
+  const handleTogglePromotion = async () => {
+    setPromoBusy(true);
+    setPromoError(null);
+    try {
+      const enable = !(auction.is_promoted || auction.promotion_requested);
+      await requestAuctionPromotion(auction.id, enable);
+      await loadAuction();
+    } catch {
+      setPromoError(promoText.error);
+    } finally {
+      setPromoBusy(false);
+    }
+  };
 
   const openBidModal = () => {
     setBidAmount(String(minBid));
@@ -177,29 +223,23 @@ export default function AuctionDetailScreen() {
       return;
     }
     setPlacingBid(true);
-    const { error: bidError } = await supabase
-      .from('auction_bids')
-      .insert({ auction_id: auction.id, amount });
+    const { data, error: bidError } = await supabase.rpc('place_auction_bid', {
+      p_auction_id: auction.id,
+      p_amount: amount,
+    });
+    setPlacingBid(false);
     if (bidError) {
-      Alert.alert(t('error'), t('aucBidError'));
-      setPlacingBid(false);
+      Alert.alert(t('error'), bidError.message.includes('bid_too_low') ? t('aucBidTooLow') : t('aucBidError'));
+      loadAuction();
       return;
     }
-    myLastBidRef.current = amount;
 
-    let newEndTime = auction.end_time;
-    if (shouldExtendEndTime(auction.end_time)) {
-      newEndTime = new Date(Date.now() + (Date.parse(auction.end_time) - Date.now()) + ANTI_SNIPE_EXTENSION_MS).toISOString();
+    const result = Array.isArray(data) ? data[0] : null;
+    if (result?.extended) {
       setAntiSnipeMsg(true);
       setTimeout(() => setAntiSnipeMsg(false), 5000);
     }
 
-    await supabase
-      .from('auctions')
-      .update({ current_price: amount, bid_count: auction.bid_count + 1, end_time: newEndTime })
-      .eq('id', auction.id);
-
-    setPlacingBid(false);
     setBidModal(false);
     setBidSuccess(true);
     setTimeout(() => setBidSuccess(false), 3000);
@@ -215,16 +255,13 @@ export default function AuctionDetailScreen() {
         style: 'destructive',
         onPress: async () => {
           setBuyNowProcessing(true);
-          await supabase
-            .from('auctions')
-            .update({
-              status: 'ended',
-              winner_id: profile?.id,
-              current_price: auction.buy_now_price,
-              end_time: new Date().toISOString(),
-            })
-            .eq('id', auction.id);
+          const { error: buyNowError } = await supabase.rpc('buy_now_auction', { p_auction_id: auction.id });
           setBuyNowProcessing(false);
+          if (buyNowError) {
+            Alert.alert(t('error'), t('aucBidError'));
+            loadAuction();
+            return;
+          }
           setBuyNowModal(false);
           setBuyNowSuccess(true);
           setTimeout(() => setBuyNowSuccess(false), 4000);
@@ -241,11 +278,8 @@ export default function AuctionDetailScreen() {
         text: t('aucEndNow'),
         style: 'destructive',
         onPress: async () => {
-          const winner = bids[0]?.bidder_id || null;
-          await supabase
-            .from('auctions')
-            .update({ status: 'ended', winner_id: winner })
-            .eq('id', auction.id);
+          const { error: closeError } = await supabase.rpc('close_auction', { p_auction_id: auction.id });
+          if (closeError) Alert.alert(t('error'), t('aucBidError'));
           loadAuction();
         },
       },
@@ -261,6 +295,21 @@ export default function AuctionDetailScreen() {
         onPress: async () => {
           await supabase.from('auctions').delete().eq('id', auction.id);
           router.back();
+        },
+      },
+    ]);
+  };
+
+  const handleDeleteBid = (bid: BidRow) => {
+    Alert.alert(t('delete'), `${bid.bidder?.breeder_name || '—'} · ${bid.amount} ${t('aucLei')}`, [
+      { text: t('aucCancel'), style: 'cancel' },
+      {
+        text: t('delete'),
+        style: 'destructive',
+        onPress: async () => {
+          const { error: deleteError } = await supabase.from('auction_bids').delete().eq('id', bid.id);
+          if (deleteError) Alert.alert(t('error'), t('aucBidError'));
+          loadAuction();
         },
       },
     ]);
@@ -302,6 +351,9 @@ export default function AuctionDetailScreen() {
                 {auction.pigeon.year && <Text style={styles.pigeonYear}>{auction.pigeon.year}</Text>}
               </View>
               {auction.pigeon.notes ? <Text style={styles.pigeonNotes}>{auction.pigeon.notes}</Text> : null}
+              {auction.pigeon.ring_series.endsWith('***') && (
+                <Text style={styles.ringHint}>Seria completă se afișează după încheierea licitației</Text>
+              )}
             </View>
           </View>
         )}
@@ -314,8 +366,8 @@ export default function AuctionDetailScreen() {
             </View>
             <View style={styles.priceDivider} />
             <View style={styles.priceBox}>
-              <Text style={styles.priceLabel}>{t('aucMinBid')}</Text>
-              <Text style={styles.priceValue}>{auction.min_bid_step} {t('aucLei')}</Text>
+              <Text style={styles.priceLabel}>{t('aucStartingPrice')}</Text>
+              <Text style={styles.priceValue}>{auction.starting_price} {t('aucLei')}</Text>
             </View>
             {hasBuyNow && (
               <>
@@ -328,13 +380,17 @@ export default function AuctionDetailScreen() {
             )}
           </View>
 
-          <View style={[styles.timeCard, urgent && !isEnded && styles.timeCardUrgent]}>
-            <View style={styles.timeCardLeft}>
-              <Clock color={isEnded ? Colors.textLight : urgent ? Colors.white : Colors.gold} size={18} />
-              <Text style={[styles.timeText, isEnded && styles.timeEnded, urgent && !isEnded && styles.timeTextUrgent]}>
-                {isEnded ? t('aucEnded2') : formatLiveCountdown(remaining)}
-              </Text>
-            </View>
+          <View style={styles.timeCard}>
+            {isEnded ? (
+              <View style={styles.timeCardLeft}>
+                <Clock color={Colors.textLight} size={18} />
+                <Text style={styles.timeEnded}>
+                  {auction.status === 'cancelled' ? t('aucCancelledLabel') : t('aucEnded2')}
+                </Text>
+              </View>
+            ) : (
+              <AuctionCountdown remaining={remaining} urgent={urgent} tone="dark" />
+            )}
             {urgent && !isEnded && (
               <View style={styles.urgentBadge}>
                 <Flame color={Colors.white} size={12} />
@@ -348,9 +404,16 @@ export default function AuctionDetailScreen() {
             <Text style={styles.bidCountText}>{auction.bid_count} {auction.bid_count === 1 ? t('aucBid') : t('aucBids')}</Text>
             <View style={styles.antiSnipeBadge}>
               <Shield color={Colors.goldLight} size={12} />
-              <Text style={styles.antiSnipeText}>Anti-Snipe 3min</Text>
+              <Text style={styles.antiSnipeText}>Anti-Snipe 5min</Text>
             </View>
           </View>
+
+          {commissionRate !== null && (
+            <View style={styles.commissionRow}>
+              <Text style={styles.commissionText}>{t('commPlatformLabel')}: {sellerCommissionRate}% {t('aucCommissionNote')}</Text>
+              <Text style={styles.commissionText}>{t('aucCommissionEstimate')}: {calculateCommission(auction.current_price, sellerCommissionRate)} {t('aucLei')}</Text>
+            </View>
+          )}
         </View>
 
         {auction.seller && (
@@ -360,9 +423,20 @@ export default function AuctionDetailScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.sellerLabel}>{t('aucSeller')}</Text>
-              <Text style={styles.sellerName}>{auction.seller.breeder_name}</Text>
+              <View style={styles.nameRow}>
+                <Text style={styles.sellerName}>{auction.seller?.breeder_name || '—'}</Text>
+                {auction.seller?.isAmbassador && <AmbassadorBadge size={14} />}
+              </View>
             </View>
           </View>
+        )}
+
+        {auction.seller && !isOwner && (
+          <UserSafetyActions
+            targetUserId={auction.seller_id}
+            targetName={auction.seller.breeder_name || 'vânzător'}
+            auctionId={auction.id}
+          />
         )}
 
         {isEnded && (
@@ -370,10 +444,27 @@ export default function AuctionDetailScreen() {
             <View style={styles.resultIconBox}>
               {isWinner ? <Trophy color={Colors.gold} size={24} /> : <Award color={Colors.textLight} size={24} />}
             </View>
-            <Text style={[styles.resultText, isWinner && styles.resultWonText]}>
-              {isWinner ? t('aucYouWon') : t('aucYouLost')}
-            </Text>
+            <View style={styles.resultBody}>
+              <Text style={[styles.resultText, isWinner && styles.resultWonText]}>
+                {auction.status === 'cancelled'
+                  ? t('aucCancelledLabel')
+                  : isWinner
+                    ? t('aucYouWon')
+                    : winnerName
+                      ? `${t('aucWinner')}: ${winnerName}`
+                      : auction.winner_id
+                        ? t('aucYouLost')
+                        : t('aucNoWinner')}
+              </Text>
+              {auction.status !== 'cancelled' && (
+                <Text style={styles.resultPrice}>{t('aucFinalPrice')}: {auction.current_price} {t('aucLei')}</Text>
+              )}
+            </View>
           </View>
+        )}
+
+        {isEnded && auction.winner_id && (isOwner || isWinner) && (
+          <AuctionHandoverCard auctionId={auction.id} />
         )}
 
         <View style={styles.bidHistoryCard}>
@@ -384,17 +475,27 @@ export default function AuctionDetailScreen() {
             bids.map((bid, i) => (
               <View key={bid.id} style={styles.bidRow}>
                 <View style={styles.bidRankBox}>
-                  <Text style={styles.bidRank}>{i + 1}</Text>
+                  <Text style={styles.bidRank}>{bids.length - i}</Text>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.bidBidder}>{bid.bidder?.breeder_name || '—'}</Text>
+                  <View style={styles.nameRow}>
+                    <Text style={styles.bidBidder}>{bid.bidder?.breeder_name || '—'}</Text>
+                    {bid.bidder?.isAmbassador && <AmbassadorBadge size={14} />}
+                  </View>
                   <Text style={styles.bidDate}>{new Date(bid.created_at).toLocaleDateString('ro-RO', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}</Text>
                 </View>
                 <Text style={styles.bidAmount}>{bid.amount} {t('aucLei')}</Text>
+                {canManage && (
+                  <TouchableOpacity style={styles.bidDeleteBtn} onPress={() => handleDeleteBid(bid)} hitSlop={8}>
+                    <Trash2 color={Colors.error} size={16} />
+                  </TouchableOpacity>
+                )}
               </View>
             ))
           )}
         </View>
+
+        <AuctionQuestions auctionId={auction.id} isEnded={isEnded} />
 
         {!isEnded && !isOwner && (
           <View style={styles.actionBtnRow}>
@@ -417,13 +518,43 @@ export default function AuctionDetailScreen() {
           </View>
         )}
 
-        {!isEnded && isOwner && (
+        {isOwner && !isEnded && (
+          <View style={[styles.promoCard, auction.is_promoted && styles.promoCardActive]}>
+            <View style={styles.promoHeader}>
+              <Megaphone color={Colors.gold} size={20} />
+              <Text style={styles.promoTitle}>{promoText.optionTitle}</Text>
+              <Text style={styles.promoPrice}>
+                {promoIsFree ? promoText.free : `${promoFee ?? 25} ${promoText.feeSuffix}`}
+              </Text>
+            </View>
+            <Text style={styles.promoHint}>
+              {promoIsFree ? promoText.optionHintFree : promoText.optionHint}
+            </Text>
+            {auction.promotion_requested && !auction.is_promoted && (
+              <Text style={styles.promoPending}>{promoText.requested}</Text>
+            )}
+            {promoError && <Text style={styles.promoErrorText}>{promoError}</Text>}
+            {(promoIsFree || !auction.is_promoted) && (
+              <TouchableOpacity
+                style={[styles.promoBtn, (auction.is_promoted || auction.promotion_requested) && styles.promoBtnOff]}
+                onPress={handleTogglePromotion}
+                disabled={promoBusy}
+              >
+                <Text style={styles.promoBtnText}>
+                  {auction.is_promoted || auction.promotion_requested ? promoText.adminDeactivate : promoText.optionTitle}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+        )}
+
+        {!isEnded && canManage && (
           <TouchableOpacity style={styles.endBtn} onPress={handleEndAuction}>
             <Text style={styles.endBtnText}>{t('aucEndNow')}</Text>
           </TouchableOpacity>
         )}
 
-        {isOwner && (
+        {canManage && (
           <TouchableOpacity style={styles.deleteBtn} onPress={handleDelete}>
             <Text style={styles.deleteBtnText}>{t('aucDelete')}</Text>
           </TouchableOpacity>
@@ -501,7 +632,7 @@ export default function AuctionDetailScreen() {
                 />
                 <Text style={styles.bidInputSuffix}>{t('aucLei')}</Text>
               </View>
-              <Text style={styles.modalHint}>{t('aucMinBid')}: {minBid} {t('aucLei')}</Text>
+              <Text style={styles.modalHint}>{t('aucCurrentBid')}: {auction.current_price} {t('aucLei')} · {t('aucMinBid')}: +{auction.min_bid_step} {t('aucLei')}</Text>
               <TouchableOpacity style={styles.confirmBidBtn} onPress={handlePlaceBid} disabled={placingBid}>
                 {placingBid ? (
                   <ActivityIndicator color={Colors.royalBlueDark} />
@@ -544,6 +675,7 @@ const styles = StyleSheet.create({
   pigeonInfoText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.textSecondary },
   pigeonYear: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textLight },
   pigeonNotes: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary, marginTop: 4 },
+  ringHint: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textLight, marginTop: 2 },
   priceCard: {
     backgroundColor: Colors.royalBlue, borderRadius: BorderRadius.lg, padding: 20, marginBottom: 16, ...Shadows.card,
   },
@@ -552,15 +684,17 @@ const styles = StyleSheet.create({
   priceLabel: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.goldLight, marginBottom: 4 },
   priceValue: { fontFamily: 'Inter-Bold', fontSize: 20, color: Colors.white },
   priceDivider: { width: 1, height: 40, backgroundColor: 'rgba(255,255,255,0.2)' },
-  timeCard: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8,
-    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, paddingVertical: 10, paddingHorizontal: 14, marginBottom: 10,
+  commissionRow: {
+    marginTop: 12, paddingTop: 12, gap: 4,
+    borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.15)',
   },
-  timeCardUrgent: { backgroundColor: Colors.error, borderWidth: 1.5, borderColor: '#FF6B6B' },
+  commissionText: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.goldLight, textAlign: 'center' },
+  timeCard: {
+    alignItems: 'center', gap: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: 12, paddingVertical: 14, paddingHorizontal: 14, marginBottom: 10,
+  },
   timeCardLeft: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  timeText: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.goldLight, fontVariant: ['tabular-nums'] },
-  timeTextUrgent: { color: Colors.white, fontSize: 18 },
-  timeEnded: { color: 'rgba(255,255,255,0.5)' },
+  timeEnded: { fontFamily: 'Inter-Bold', fontSize: 16, color: 'rgba(255,255,255,0.7)' },
   urgentBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8 },
   urgentBadgeText: { fontFamily: 'Inter-Bold', fontSize: 10, color: Colors.white },
   bidCountRow: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4 },
@@ -584,7 +718,9 @@ const styles = StyleSheet.create({
   resultWon: { backgroundColor: Colors.goldPale, borderWidth: 1, borderColor: Colors.gold },
   resultLost: { backgroundColor: Colors.neutral100, borderWidth: 1, borderColor: Colors.borderLight },
   resultIconBox: { width: 44, height: 44, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.5)', justifyContent: 'center', alignItems: 'center' },
-  resultText: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.textSecondary, flex: 1 },
+  resultBody: { flex: 1, gap: 4 },
+  resultText: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.textSecondary },
+  resultPrice: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.textSecondary },
   resultWonText: { color: Colors.goldDark },
   bidHistoryCard: {
     backgroundColor: Colors.white, borderRadius: BorderRadius.lg, padding: 18,
@@ -596,8 +732,10 @@ const styles = StyleSheet.create({
   bidRankBox: { width: 28, height: 28, borderRadius: 8, backgroundColor: Colors.royalBluePale, justifyContent: 'center', alignItems: 'center' },
   bidRank: { fontFamily: 'Inter-Bold', fontSize: 13, color: Colors.royalBlue },
   bidBidder: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.text },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   bidDate: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textLight, marginTop: 2 },
   bidAmount: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.royalBlue },
+  bidDeleteBtn: { padding: 6 },
   actionBtnRow: { flexDirection: 'row', gap: 10, marginBottom: 12 },
   goldBidBtn: {
     flex: 1, flexDirection: 'row', backgroundColor: Colors.gold, borderRadius: BorderRadius.md,
@@ -609,6 +747,22 @@ const styles = StyleSheet.create({
     paddingVertical: 18, alignItems: 'center', justifyContent: 'center', gap: 8,
   },
   buyNowBtnText: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.white },
+  promoCard: {
+    backgroundColor: Colors.white, borderRadius: BorderRadius.md, padding: 16, gap: 8,
+    borderWidth: 1, borderColor: Colors.gold, marginBottom: 12,
+  },
+  promoCardActive: { borderWidth: 2 },
+  promoHeader: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  promoTitle: { flex: 1, fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.text },
+  promoPrice: { fontFamily: 'Inter-Bold', fontSize: 14, color: Colors.royalBlueDark },
+  promoHint: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 19, color: Colors.textSecondary },
+  promoPending: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.warning },
+  promoErrorText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.error },
+  promoBtn: {
+    backgroundColor: Colors.gold, borderRadius: BorderRadius.md, paddingVertical: 12, alignItems: 'center',
+  },
+  promoBtnOff: { backgroundColor: Colors.white, borderWidth: 1.5, borderColor: Colors.error },
+  promoBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.royalBlueDark },
   endBtn: {
     backgroundColor: Colors.white, borderRadius: BorderRadius.md, paddingVertical: 14,
     alignItems: 'center', borderWidth: 1.5, borderColor: Colors.warning, marginBottom: 10,

@@ -16,9 +16,14 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { useCountdown, formatTimeRemaining, isUrgent } from '@/lib/auction-utils';
+import { useCountdown, isUrgent } from '@/lib/auction-utils';
+import { useAutoCloseAuction } from '@/lib/use-auction-autoclose';
+import { AuctionCountdown } from '@/components/AuctionCountdown';
 import { useLocalSearchParams } from 'expo-router';
-import { Gavel, Plus, Crown, Bird, TrendingUp, Clock, Trophy, ChevronRight, Sparkles, Zap } from 'lucide-react-native';
+import { Gavel, Plus, Crown, Bird, TrendingUp, Clock, Trophy, ChevronRight, Sparkles, Zap, Megaphone } from 'lucide-react-native';
+import { getPromotionText } from '@/lib/promotion';
+import { fetchCommissionRates, getCommissionRateForRole, type CommissionRates } from '@/lib/commission';
+import { CommissionSummary } from '@/components/CommissionSummary';
 
 interface AuctionRow {
   id: string;
@@ -31,6 +36,7 @@ interface AuctionRow {
   status: string;
   seller_id: string;
   buy_now_price: number | null;
+  is_promoted: boolean;
   pigeon: {
     ring_series: string;
     color: string;
@@ -38,14 +44,13 @@ interface AuctionRow {
     is_champion: boolean;
     photo_url: string | null;
   } | null;
-  seller: { breeder_name: string } | null;
 }
 
 type TabFilter = 'all' | 'mine' | 'ended';
 
 export default function AuctionsScreen() {
-  const { t } = useLanguage();
-  const { profile, isAdmin } = useAuth();
+  const { t, language } = useLanguage();
+  const { profile, isAdmin, isAmbassador, commissionRole, effectivePlan } = useAuth();
   const router = useRouter();
   const params = useLocalSearchParams<{ sellerId?: string }>();
   const sellerFilter = params.sellerId || null;
@@ -53,24 +58,30 @@ export default function AuctionsScreen() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<TabFilter>(sellerFilter ? 'all' : 'all');
   const [showPaywall, setShowPaywall] = useState(false);
+  const [commissionRates, setCommissionRates] = useState<CommissionRates | null>(null);
+  const commissionRate = commissionRates ? getCommissionRateForRole(commissionRole, commissionRates) : null;
 
-  const hasAccess = isAdmin || profile?.subscription_plan === 'trial' || profile?.subscription_plan === 'pro';
+  useEffect(() => {
+    fetchCommissionRates().then(setCommissionRates).catch(() => setCommissionRates(null));
+  }, []);
+
+  const hasAccess = isAdmin || effectivePlan === 'trial' || effectivePlan === 'pro';
 
   const loadAuctions = useCallback(async () => {
     setLoading(true);
     let query = supabase
       .from('auctions')
       .select(`
-        id, title, starting_price, current_price, min_bid_step, end_time, bid_count, status, seller_id, buy_now_price,
-        pigeon:pigeons(ring_series, color, sex, is_champion, photo_url),
-        seller:profiles!auctions_seller_id_profiles_fkey(breeder_name)
+        id, title, starting_price, current_price, min_bid_step, end_time, bid_count, status, seller_id, buy_now_price, is_promoted,
+        pigeon:pigeons(ring_series, color, sex, is_champion, photo_url)
       `)
+      .order('is_promoted', { ascending: false })
       .order('created_at', { ascending: false });
 
     if (filter === 'mine') {
       query = query.eq('seller_id', profile?.id || '');
     } else if (filter === 'ended') {
-      query = query.eq('status', 'ended');
+      query = query.in('status', ['ended', 'cancelled']);
     } else {
       query = query.eq('status', 'active');
     }
@@ -154,8 +165,11 @@ export default function AuctionsScreen() {
           </View>
         ) : (
           <View style={{ gap: 14 }}>
+            {filter === 'mine' && commissionRate !== null && (
+              <CommissionSummary rate={commissionRate} role={commissionRole} />
+            )}
             {auctions.map(auction => (
-              <AuctionCard key={auction.id} auction={auction} t={t} onPress={() => router.push(`/(tabs)/auction-detail?id=${auction.id}`)} />
+              <AuctionCard key={auction.id} auction={auction} t={t} onExpired={loadAuctions} onPress={() => router.push(`/(tabs)/auction-detail?id=${auction.id}`)} />
             ))}
           </View>
         )}
@@ -171,15 +185,22 @@ export default function AuctionsScreen() {
   );
 }
 
-function AuctionCard({ auction, t, onPress }: { auction: AuctionRow; t: (k: any) => string; onPress: () => void }) {
+function AuctionCard({ auction, t, onPress, onExpired }: { auction: AuctionRow; t: (k: any) => string; onPress: () => void; onExpired: () => void }) {
+  const { language } = useLanguage();
   const remaining = useCountdown(auction.end_time);
-  const isEnded = auction.status === 'ended' || remaining.ended;
+  const isEnded = auction.status !== 'active' || remaining.ended;
   const urgent = isUrgent(remaining);
+  useAutoCloseAuction(auction.id, auction.status, remaining.ended, onExpired);
   const pigeon = auction.pigeon;
   const hasBuyNow = auction.buy_now_price !== null && auction.buy_now_price > 0;
+  const promoText = getPromotionText(language);
 
   return (
-    <TouchableOpacity style={styles.auctionCard} onPress={onPress} activeOpacity={0.85}>
+    <TouchableOpacity
+      style={[styles.auctionCard, auction.is_promoted && styles.promotedCard]}
+      onPress={onPress}
+      activeOpacity={0.85}
+    >
       <View style={styles.cardLeft}>
         <View style={styles.pigeonPhotoBox}>
           {pigeon?.photo_url ? (
@@ -192,6 +213,12 @@ function AuctionCard({ auction, t, onPress }: { auction: AuctionRow; t: (k: any)
 
       <View style={styles.cardBody}>
         <View style={styles.cardHeader}>
+          {auction.is_promoted && (
+            <View style={styles.promotedBadge}>
+              <Megaphone color={Colors.white} size={10} />
+              <Text style={styles.promotedBadgeText}>{promoText.badge}</Text>
+            </View>
+          )}
           {pigeon?.is_champion && (
             <View style={styles.championBadge}>
               <Trophy color={Colors.gold} size={12} />
@@ -223,11 +250,15 @@ function AuctionCard({ auction, t, onPress }: { auction: AuctionRow; t: (k: any)
           </View>
         </View>
 
-        <View style={styles.timeRow}>
-          <Clock color={isEnded ? Colors.textLight : urgent ? Colors.error : Colors.gold} size={14} />
-          <Text style={[styles.timeText, isEnded && styles.timeEnded, urgent && !isEnded && styles.timeUrgent]}>
-            {isEnded ? t('aucEnded2') : formatTimeRemaining(remaining, t)}
-          </Text>
+        <View style={styles.timeBlock}>
+          {isEnded ? (
+            <View style={styles.timeRow}>
+              <Clock color={Colors.textLight} size={14} />
+              <Text style={styles.timeEnded}>{auction.status === 'cancelled' ? t('aucCancelledLabel') : t('aucEnded2')}</Text>
+            </View>
+          ) : (
+            <AuctionCountdown remaining={remaining} urgent={urgent} size="compact" />
+          )}
         </View>
       </View>
 
@@ -300,6 +331,14 @@ const styles = StyleSheet.create({
   photoPlaceholder: { justifyContent: 'center', alignItems: 'center' },
   cardBody: { flex: 1, gap: 6 },
   cardHeader: { flexDirection: 'row', gap: 6 },
+  promotedCard: {
+    borderWidth: 2, borderColor: Colors.gold,
+  },
+  promotedBadge: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: Colors.gold,
+    borderRadius: BorderRadius.sm, paddingHorizontal: 8, paddingVertical: 3,
+  },
+  promotedBadgeText: { fontFamily: 'Inter-Bold', fontSize: 10, letterSpacing: 0.8, color: Colors.royalBlueDark },
   championBadge: {
     flexDirection: 'row', alignItems: 'center', gap: 4,
     backgroundColor: Colors.goldPale, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
@@ -316,8 +355,7 @@ const styles = StyleSheet.create({
   statBox: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   statValue: { fontFamily: 'Inter-Bold', fontSize: 14, color: Colors.royalBlue },
   statLabel: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary },
+  timeBlock: { marginTop: 4 },
   timeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  timeText: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.gold },
-  timeUrgent: { color: Colors.error, fontFamily: 'Inter-Bold' },
-  timeEnded: { color: Colors.textLight },
+  timeEnded: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.textLight },
 });

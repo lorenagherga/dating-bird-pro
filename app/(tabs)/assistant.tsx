@@ -15,7 +15,7 @@ import { useAuth } from '@/lib/auth-context';
 import { supabase, SUPABASE_URL, SUPABASE_ANON_KEY } from '@/lib/supabase';
 import { Colors } from '@/lib/theme';
 import { DB_SEX } from '@/lib/genetics-engine/registry';
-import { GAME_STYLE_LABELS, GameStyle } from '@/lib/types';
+import { GAME_STYLE_LABELS, GAME_STYLE_OPTIONS } from '@/lib/types';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import { Send, MessageCircle, Globe } from 'lucide-react-native';
 import { useLanguage } from '@/lib/language-context';
@@ -274,8 +274,7 @@ export default function AssistantScreen() {
     }
 
     if (lowerQ.includes('joc') || lowerQ.includes('racing') || lowerQ.includes('race') || lowerQ.includes('style')) {
-      const gameStyles: GameStyle[] = ['short', 'medium', 'long', 'faller', 'none'];
-      for (const style of gameStyles) {
+      for (const style of GAME_STYLE_OPTIONS) {
         const label = GAME_STYLE_LABELS[style].toLowerCase();
         if (lowerQ.includes(label) || lowerQ.includes(style)) {
           const isMaleQuery = lowerQ.includes('mascul') || lowerQ.includes('male');
@@ -319,7 +318,7 @@ export default function AssistantScreen() {
             grouped[key].push(p);
           }
           let result = msgLang === 'en' ? 'Here is the breakdown by flying style:\n\n' : 'Iată situația pe stiluri de joc:\n\n';
-          for (const style of gameStyles) {
+          for (const style of GAME_STYLE_OPTIONS) {
             const items = grouped[style];
             if (items && items.length > 0) {
               result += `${GAME_STYLE_LABELS[style]} (${items.length}): ${items.map(p => `${p.ring_series}${p.sex === DB_SEX.male ? ' ♂' : ' ♀'}`).join(', ')}\n`;

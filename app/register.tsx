@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -10,10 +10,12 @@ import {
   Platform,
   ActivityIndicator,
 } from 'react-native';
+import { LanguagePicker } from '@/components/LanguagePicker';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows } from '@/lib/theme';
+import { applyInviteCode, checkInviteCode, fetchInviteSettings } from '@/lib/invite-program';
 import { LinearGradient } from 'expo-linear-gradient';
 
 export default function RegisterScreen() {
@@ -23,8 +25,16 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [breederName, setBreederName] = useState('');
+  const [inviteEnabled, setInviteEnabled] = useState(false);
+  const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchInviteSettings()
+      .then((s) => setInviteEnabled(s.enabled))
+      .catch(() => setInviteEnabled(false));
+  }, []);
 
   const handleRegister = async () => {
     if (!email.trim() || !password.trim() || !breederName.trim()) {
@@ -35,15 +45,34 @@ export default function RegisterScreen() {
       setError(language === 'ro' ? 'Parola trebuie să aibă cel puțin 6 caractere.' : 'Password must be at least 6 characters.');
       return;
     }
+    const code = inviteEnabled ? inviteCode.trim().toUpperCase() : '';
     setError(null);
     setLoading(true);
-    const { error: err } = await signUp(email.trim(), password, breederName.trim());
-    setLoading(false);
-    if (err) {
-      setError(err);
-    } else {
-      router.replace('/(tabs)');
+    if (code) {
+      try {
+        const valid = await checkInviteCode(code);
+        if (!valid) {
+          setLoading(false);
+          setError(language === 'ro' ? 'Codul de invitație nu este valid.' : 'The invite code is not valid.');
+          return;
+        }
+      } catch {
+        setLoading(false);
+        setError(language === 'ro' ? 'Nu am putut verifica codul de invitație. Încearcă din nou.' : 'Could not verify the invite code. Please try again.');
+        return;
+      }
     }
+    const { error: err } = await signUp(email.trim(), password, breederName.trim());
+    if (err) {
+      setLoading(false);
+      setError(err);
+      return;
+    }
+    if (code) {
+      await applyInviteCode(code).catch(() => undefined);
+    }
+    setLoading(false);
+    router.replace('/(tabs)');
   };
 
   return (
@@ -58,6 +87,9 @@ export default function RegisterScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.topRow}>
+            <LanguagePicker />
+          </View>
           <View style={styles.header}>
             <View style={styles.logoCircle}>
               <Text style={styles.logoText}>DBP</Text>
@@ -105,6 +137,21 @@ export default function RegisterScreen() {
               />
             </View>
 
+            {inviteEnabled && (
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>{language === 'ro' ? 'Cod de invitație (opțional)' : 'Invite code (optional)'}</Text>
+                <TextInput
+                  style={styles.input}
+                  value={inviteCode}
+                  onChangeText={setInviteCode}
+                  placeholder="PF-XXXXX"
+                  placeholderTextColor="rgba(255,255,255,0.45)"
+                  autoCapitalize="characters"
+                  autoCorrect={false}
+                />
+              </View>
+            )}
+
             {error && (
               <View style={styles.errorBox}>
                 <Text style={styles.errorText}>{error}</Text>
@@ -118,6 +165,17 @@ export default function RegisterScreen() {
                 <Text style={styles.primaryButtonText}>{t('registerBtn')}</Text>
               )}
             </TouchableOpacity>
+
+            <View style={styles.legalRow}>
+              <Text style={styles.legalText}>{language === 'ro' ? 'Prin crearea contului accepți' : 'By creating an account you accept the'} </Text>
+              <TouchableOpacity onPress={() => router.push('/terms')} accessibilityRole="link">
+                <Text style={styles.legalLink}>{language === 'ro' ? 'Termenii' : 'Terms'}</Text>
+              </TouchableOpacity>
+              <Text style={styles.legalText}> {language === 'ro' ? 'și' : 'and'} </Text>
+              <TouchableOpacity onPress={() => router.push('/privacy')} accessibilityRole="link">
+                <Text style={styles.legalLink}>{language === 'ro' ? 'Politica de confidențialitate' : 'Privacy Policy'}</Text>
+              </TouchableOpacity>
+            </View>
 
             <TouchableOpacity
               style={styles.secondaryButton}
@@ -143,6 +201,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     padding: 32,
   },
+  topRow: { flexDirection: 'row', justifyContent: 'flex-end' },
   header: {
     alignItems: 'center',
     marginBottom: 44,
@@ -237,5 +296,22 @@ const styles = StyleSheet.create({
   secondaryLink: {
     color: Colors.goldLight,
     fontFamily: 'Inter-SemiBold',
+  },
+  legalRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  legalText: {
+    fontFamily: 'Inter-Regular',
+    fontSize: 13,
+    color: 'rgba(255,255,255,0.6)',
+  },
+  legalLink: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 13,
+    color: Colors.goldLight,
+    textDecorationLine: 'underline',
   },
 });

@@ -17,19 +17,8 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
-import { Crown, MapPin, ChevronRight, Star, Bird, Plus, X, Sparkles, CheckCircle, Clock, XCircle } from 'lucide-react-native';
-
-interface EliteBreeder {
-  id: string;
-  breeder_name: string;
-  logo_url: string | null;
-  county: string | null;
-  categories: string[];
-  description: string;
-  is_featured: boolean;
-  sort_order: number;
-  user_id: string | null;
-}
+import { PARTNER_BENEFITS, fetchPartnerListings, getPartnerKindLabel, type PartnerListing } from '@/lib/partner-directory';
+import { Crown, MapPin, ChevronRight, Star, Bird, Plus, X, Sparkles, CheckCircle, Clock, XCircle, BadgeCheck } from 'lucide-react-native';
 
 interface PartnerRequest {
   id: string;
@@ -45,8 +34,9 @@ export default function PartnersScreen() {
   const { t } = useLanguage();
   const { profile } = useAuth();
   const router = useRouter();
-  const [breeders, setBreeders] = useState<EliteBreeder[]>([]);
+  const [breeders, setBreeders] = useState<PartnerListing[]>([]);
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState<string | null>(null);
   const [formVisible, setFormVisible] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [myRequest, setMyRequest] = useState<PartnerRequest | null>(null);
@@ -58,14 +48,15 @@ export default function PartnersScreen() {
   });
 
   const loadBreeders = useCallback(async () => {
-    const { data } = await supabase
-      .from('elite_breeders')
-      .select('*')
-      .order('is_featured', { ascending: false })
-      .order('sort_order', { ascending: true });
-    setBreeders((data || []) as EliteBreeder[]);
-    setLoading(false);
-  }, []);
+    setListError(null);
+    try {
+      setBreeders(await fetchPartnerListings());
+    } catch {
+      setListError(t('error'));
+    } finally {
+      setLoading(false);
+    }
+  }, [t]);
 
   const loadMyRequest = useCallback(async () => {
     if (!profile?.id) return;
@@ -150,6 +141,8 @@ export default function PartnersScreen() {
 
         {loading ? (
           <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 40 }} />
+        ) : listError ? (
+          <Text style={styles.listErrorText}>{listError}</Text>
         ) : breeders.length === 0 ? (
           <View style={styles.emptyState}>
             <Crown color={Colors.textLight} size={48} />
@@ -181,19 +174,32 @@ export default function PartnersScreen() {
                   </View>
                   <View style={styles.cardInfo}>
                     <Text style={styles.breederName} numberOfLines={1}>{breeder.breeder_name}</Text>
-                    {breeder.county && (
+                    {(breeder.locality || breeder.county) && (
                       <View style={styles.countyRow}>
                         <MapPin color={Colors.textSecondary} size={13} />
-                        <Text style={styles.countyText}>{breeder.county}</Text>
+                        <Text style={styles.countyText}>{breeder.locality || breeder.county}</Text>
                       </View>
                     )}
                     <View style={styles.categoriesRow}>
-                      {breeder.categories.slice(0, 3).map((cat, idx) => (
+                      <View style={styles.kindChip}>
+                        <Text style={styles.kindText}>{getPartnerKindLabel(breeder.partner_kind)}</Text>
+                      </View>
+                      {breeder.categories.slice(0, 2).map((cat, idx) => (
                         <View key={idx} style={styles.categoryChip}>
                           <Text style={styles.categoryText}>{cat}</Text>
                         </View>
                       ))}
                     </View>
+                    {PARTNER_BENEFITS.some((benefit) => breeder[benefit.key]) && (
+                      <View style={styles.benefitsRow}>
+                        {PARTNER_BENEFITS.filter((benefit) => breeder[benefit.key]).map((benefit) => (
+                          <View key={benefit.key} style={styles.benefitChip}>
+                            <BadgeCheck color={Colors.goldDark} size={12} />
+                            <Text style={styles.benefitChipText}>{benefit.label}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
                   </View>
                   <ChevronRight color={Colors.textLight} size={20} style={{ alignSelf: 'center' }} />
                 </View>
@@ -306,11 +312,18 @@ export default function PartnersScreen() {
 }
 
 const styles = StyleSheet.create({
+  benefitsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 },
+  benefitChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 4,
+    backgroundColor: Colors.goldPale, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8,
+  },
+  benefitChipText: { fontFamily: 'Inter-SemiBold', fontSize: 11, color: Colors.goldDark },
   container: { flex: 1, backgroundColor: Colors.background },
   scrollContent: { padding: 24, paddingBottom: 100 },
   emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 60, gap: 12 },
   emptyTitle: { fontFamily: 'Inter-SemiBold', fontSize: 18, color: Colors.text },
   emptySubtitle: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textSecondary, textAlign: 'center', paddingHorizontal: 32 },
+  listErrorText: { fontFamily: 'Inter-Medium', fontSize: 14, color: Colors.error, textAlign: 'center', marginTop: 40 },
   myRequestBanner: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -396,6 +409,17 @@ const styles = StyleSheet.create({
     fontFamily: 'Inter-SemiBold',
     fontSize: 11,
     color: Colors.royalBlue,
+  },
+  kindChip: {
+    backgroundColor: Colors.goldPale,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  kindText: {
+    fontFamily: 'Inter-SemiBold',
+    fontSize: 11,
+    color: Colors.goldDark,
   },
   // Become Partner Card
   becomePartnerCard: {

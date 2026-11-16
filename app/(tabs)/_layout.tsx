@@ -1,5 +1,5 @@
 import { Tabs } from 'expo-router';
-import { Home, Bird, Users, Menu, Shield } from 'lucide-react-native';
+import { Home, Bird, Trophy, BookOpen, User, MessageCircle } from 'lucide-react-native';
 import { Colors } from '@/lib/theme';
 import type { ColorValue } from 'react-native';
 import { useState, useEffect } from 'react';
@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function TabLayout() {
   const { isAdmin } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const ro = language === 'ro';
   const [unreadTickets, setUnreadTickets] = useState(0);
   const insets = useSafeAreaInsets();
 
@@ -39,6 +40,7 @@ export default function TabLayout() {
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: Colors.royalBlue,
+        tabBarActiveBackgroundColor: Colors.royalBluePale,
         tabBarInactiveTintColor: Colors.textLight,
         tabBarStyle: {
           backgroundColor: Colors.white,
@@ -58,37 +60,51 @@ export default function TabLayout() {
           marginTop: 2,
         },
         tabBarAllowFontScaling: false,
+        tabBarItemStyle: { borderRadius: 16, marginHorizontal: 6, marginVertical: 4 },
       }}
     >
-      {/* Visible tabs — only 4 */}
       <Tabs.Screen
         name="index"
         options={{
           title: t('tabHome'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Home color={color} size={28} />,
+          tabBarIcon: ({ color }: { focused: boolean; color: ColorValue; size: number }) => <Home color={color} size={28} />,
         }}
       />
       <Tabs.Screen
-        name="pigeons"
+        name="herd"
         options={{
-          title: t('tabRegistry'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Bird color={color} size={28} />,
+          title: ro ? 'Porumbei' : 'Pigeons',
+          tabBarIcon: ({ color }: { focused: boolean; color: ColorValue; size: number }) => <Bird color={color} size={28} />,
         }}
       />
       <Tabs.Screen
-        name="community"
+        name="competitions"
         options={{
-          title: t('tabCommunity'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => <Users color={color} size={28} />,
+          title: ro ? 'Concursuri' : 'Competitions',
+          tabBarIcon: ({ color }: { focused: boolean; color: ColorValue; size: number }) => <Trophy color={color} size={28} />,
+        }}
+      />
+      <Tabs.Screen
+        name="guide"
+        options={{
+          title: ro ? 'Ghid' : 'Guide',
+          tabBarIcon: ({ color }: { focused: boolean; color: ColorValue; size: number }) => <BookOpen color={color} size={28} />,
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarIcon: ({ color }: { focused: boolean; color: ColorValue; size: number }) => <MessageCircle color={color} size={28} />,
         }}
       />
       <Tabs.Screen
         name="more"
         options={{
-          title: t('tabMore'),
-          tabBarIcon: ({ color, size }: { focused: boolean; color: ColorValue; size: number }) => (
+          title: ro ? 'Cont' : 'Account',
+          tabBarIcon: ({ color }: { focused: boolean; color: ColorValue; size: number }) => (
             <View>
-              <Menu color={color} size={28} />
+              <User color={color} size={28} />
               {isAdmin && unreadTickets > 0 && (
                 <View style={tabStyles.badge}>
                   <Text style={tabStyles.badgeText}>
@@ -102,9 +118,13 @@ export default function TabLayout() {
       />
 
       {/* Hidden from tab bar — accessible via "More" screen or direct navigation */}
+      <Tabs.Screen name="pigeons" options={hiddenScreenOptions} />
       <Tabs.Screen name="nests" options={hiddenScreenOptions} />
       <Tabs.Screen name="races" options={hiddenScreenOptions} />
       <Tabs.Screen name="vitrina" options={hiddenScreenOptions} />
+      <Tabs.Screen name="standards" options={hiddenScreenOptions} />
+      <Tabs.Screen name="flying" options={hiddenScreenOptions} />
+      <Tabs.Screen name="fci-calculator" options={hiddenScreenOptions} />
       <Tabs.Screen name="diagnostic" options={hiddenScreenOptions} />
       <Tabs.Screen name="scan-pedigree" options={hiddenScreenOptions} />
       <Tabs.Screen name="calculator" options={hiddenScreenOptions} />
@@ -126,8 +146,10 @@ export default function TabLayout() {
       <Tabs.Screen name="columbodroms" options={hiddenScreenOptions} />
       <Tabs.Screen name="columbodrom-detail" options={hiddenScreenOptions} />
       <Tabs.Screen name="gps-tracks" options={hiddenScreenOptions} />
+      <Tabs.Screen name="flight-stages" options={hiddenScreenOptions} />
       <Tabs.Screen name="pedigree-studio" options={hiddenScreenOptions} />
       <Tabs.Screen name="breeding-match" options={hiddenScreenOptions} />
+      <Tabs.Screen name="commission-report" options={hiddenScreenOptions} />
     </Tabs>
   );
 }

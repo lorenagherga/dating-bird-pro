@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -22,6 +22,16 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { GenerationSelector } from '@/components/GenerationSelector';
+import { savePdf } from '@/lib/pdf/pdf-export';
+import { buildPigeonPedigreePdf } from '@/lib/pdf/pdf-pigeon-documents';
+import {
+  buildPedigreeTree,
+  clampGenerations,
+  loadPedigreeData,
+  type PedigreeData,
+  type PedigreeNode,
+} from '@/lib/pedigree/pedigree-tree';
 import type { TranslationKey } from '@/lib/i18n';
 import {
   ArrowLeft,
@@ -41,33 +51,12 @@ import {
   X,
   Sparkles,
   Check,
+  ChevronDown,
   ChevronRight,
   Link2,
   Layers,
   Palette,
 } from 'lucide-react-native';
-
-interface PigeonRecord {
-  id: string;
-  ring_series: string;
-  year: number | null;
-  sex: string;
-  color: string;
-  status: string;
-  sire_id: string | null;
-  dam_id: string | null;
-  photo_url: string | null;
-  notes: string;
-  is_champion: boolean;
-}
-
-interface PalmaresEntry {
-  id: string;
-  position: number;
-  race_name: string;
-  year: number | null;
-  distance_km: number | null;
-}
 
 interface PedigreeSettings {
   id?: string;
@@ -94,10 +83,14 @@ interface ImportPreview {
 export default function PedigreeStudioScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const ro = language === 'ro';
   const { profile } = useAuth();
-  const [pigeon, setPigeon] = useState<PigeonRecord | null>(null);
+  const [data, setData] = useState<PedigreeData | null>(null);
+  const [loadError, setLoadError] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState(false);
   const [settings, setSettings] = useState<PedigreeSettings>({
     logo_url: null,
     background_url: null,
@@ -105,7 +98,7 @@ export default function PedigreeStudioScreen() {
     accent_color: '#0F2A6B',
     show_palmares: true,
     show_photos: true,
-    generations: 5,
+    generations: 4,
     breeder_display_name: profile?.breeder_name || null,
     loft_address: null,
   });
@@ -117,46 +110,46 @@ export default function PedigreeStudioScreen() {
   const [importFormat, setImportFormat] = useState('auto');
   const [shareUrl, setShareUrl] = useState<string | null>(null);
   const [creatingShare, setCreatingShare] = useState(false);
-  const [ancestry, setAncestry] = useState<any>(null);
-  const [palmaresMap, setPalmaresMap] = useState<Record<string, PalmaresEntry[]>>({});
+  const [selectedId, setSelectedId] = useState<string | null>(id ?? null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const pigeon = data && selectedId ? data.pigeonById.get(selectedId) ?? null : null;
+  const pigeonList = useMemo(
+    () =>
+      data
+        ? Array.from(data.pigeonById.values()).sort((a, b) =>
+            a.ring_series.localeCompare(b.ring_series, undefined, { numeric: true })
+          )
+        : [],
+    [data]
+  );
+  const generations = clampGenerations(settings.generations);
+  const ancestry = useMemo(
+    () => (data && selectedId ? buildPedigreeTree(data, selectedId, generations) : null),
+    [data, selectedId, generations]
+  );
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const bgInputRef = useRef<HTMLInputElement | null>(null);
 
-  const fetchPigeon = async (pid: string): Promise<PigeonRecord | null> => {
-    const { data } = await supabase.from('pigeons').select('*').eq('id', pid).maybeSingle();
-    return data as PigeonRecord | null;
-  };
-
-  const fetchPalmares = async (pid: string): Promise<PalmaresEntry[]> => {
-    const { data } = await supabase
-      .from('pigeon_palmares')
-      .select('id, position, race_name, year, distance_km')
-      .eq('pigeon_id', pid)
-      .order('position', { ascending: true });
-    return (data || []) as PalmaresEntry[];
-  };
-
-  const buildAncestry = async (p: PigeonRecord | null, gens: number): Promise<any> => {
-    if (!p || gens === 0) return null;
-    const [sire, dam] = await Promise.all([
-      p.sire_id ? fetchPigeon(p.sire_id) : Promise.resolve(null),
-      p.dam_id ? fetchPigeon(p.dam_id) : Promise.resolve(null),
-    ]);
-    return {
-      ...p,
-      sire: await buildAncestry(sire, gens - 1),
-      dam: await buildAncestry(dam, gens - 1),
-    };
-  };
+  useEffect(() => {
+    if (id) setSelectedId(id);
+  }, [id]);
 
   const loadAll = useCallback(async () => {
-    if (!id) return;
-    const p = await fetchPigeon(id);
-    setPigeon(p);
+    setLoadError(false);
+    try {
+      const loaded = await loadPedigreeData();
+      setData(loaded);
+      setSelectedId((current) =>
+        current && loaded.pigeonById.has(current)
+          ? current
+          : Array.from(loaded.pigeonById.keys())[0] ?? null
+      );
+    } catch {
+      setLoadError(true);
+    }
     setLoading(false);
 
-    // Load settings
     if (profile?.id) {
       const { data: sData } = await supabase
         .from('pedigree_settings')
@@ -167,29 +160,7 @@ export default function PedigreeStudioScreen() {
         setSettings(sData as PedigreeSettings);
       }
     }
-
-    // Build ancestry
-    if (p) {
-      const tree = await buildAncestry(p, 8);
-      setAncestry(tree);
-      const ids = new Set<string>();
-      const collect = (node: any) => {
-        if (!node) return;
-        if (node.id) ids.add(node.id);
-        collect(node.sire);
-        collect(node.dam);
-      };
-      collect(tree);
-      const map: Record<string, PalmaresEntry[]> = {};
-      await Promise.all(
-        Array.from(ids).map(async (pid) => {
-          const entries = await fetchPalmares(pid);
-          if (entries.length > 0) map[pid] = entries;
-        })
-      );
-      setPalmaresMap(map);
-    }
-  }, [id, profile?.id]);
+  }, [profile?.id]);
 
   useEffect(() => {
     loadAll();
@@ -327,16 +298,16 @@ export default function PedigreeStudioScreen() {
   };
 
   const handleCreateShare = async () => {
-    if (!id || !profile?.id) return;
+    if (!selectedId || !profile?.id) return;
     setCreatingShare(true);
     try {
       const { data, error } = await supabase
         .from('pedigree_shares')
-        .insert({ user_id: profile.id, pigeon_id: id, template_size: settings.template_size })
+        .insert({ user_id: profile.id, pigeon_id: selectedId, template_size: settings.template_size })
         .select('share_token')
         .single();
       if (error) throw error;
-      const baseUrl = Platform.OS === 'web' ? window.location.origin : 'https://datingbirdpro.app';
+      const baseUrl = Platform.OS === 'web' ? window.location.origin : 'https://pigeonfan.ro';
       const url = `${baseUrl}/pedigree/${data.share_token}`;
       setShareUrl(url);
     } catch (err) {
@@ -380,11 +351,17 @@ export default function PedigreeStudioScreen() {
     }
   };
 
-  const handleDownload = () => {
-    if (Platform.OS === 'web') {
-      window.print();
-    } else {
-      Alert.alert(t('pedStDownload'), t('pedStDownloadMsg'));
+  const handleDownload = async () => {
+    if (!profile?.id || !selectedId) return;
+    setDownloading(true);
+    setDownloadError(false);
+    try {
+      const { doc, fileName } = await buildPigeonPedigreePdf(profile.id, selectedId, generations);
+      await savePdf(doc, fileName);
+    } catch {
+      setDownloadError(true);
+    } finally {
+      setDownloading(false);
     }
   };
 
@@ -401,7 +378,8 @@ export default function PedigreeStudioScreen() {
     return Colors.royalBlue;
   };
 
-  const renderTreeNode = (node: any, gen: number): React.ReactNode => {
+  const renderTreeNode = (node: PedigreeNode | null, gen: number): React.ReactNode => {
+    if (gen >= generations) return null;
     if (!node) {
       return (
         <View style={[styles.treeNode, { marginLeft: gen * 8 }]}>
@@ -411,7 +389,7 @@ export default function PedigreeStudioScreen() {
         </View>
       );
     }
-    const palmares = palmaresMap[node.id] || [];
+    const palmares = data?.palmaresByPigeon.get(node.id) ?? [];
     const showTrophy = node.is_champion || palmares.some(p => p.position <= 3);
 
     return (
@@ -459,10 +437,12 @@ export default function PedigreeStudioScreen() {
             {gen === 0 && <Text style={styles.rootLabel}>{t('subject')}</Text>}
           </View>
         </View>
-        <View style={{ gap: 3 }}>
-          {renderTreeNode(node.sire, gen + 1)}
-          {renderTreeNode(node.dam, gen + 1)}
-        </View>
+        {gen + 1 < generations && (
+          <View style={{ gap: 3 }}>
+            {renderTreeNode(node.sire, gen + 1)}
+            {renderTreeNode(node.dam, gen + 1)}
+          </View>
+        )}
       </View>
     );
   };
@@ -471,6 +451,38 @@ export default function PedigreeStudioScreen() {
     return (
       <View style={styles.container}>
         <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 60 }} />
+      </View>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.notFound}>{t('error')}</Text>
+      </View>
+    );
+  }
+
+  if (data && pigeonList.length === 0) {
+    return (
+      <View style={styles.container}>
+        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <ScreenHeader title={t('pedStTitle')} showBack />
+          <View style={styles.emptyBox}>
+            <Bird color={Colors.royalBlue} size={40} />
+            <Text style={styles.emptyTitle}>
+              {ro ? 'Nu ai încă porumbei în registru' : 'You have no pigeons in your register yet'}
+            </Text>
+            <Text style={styles.emptyText}>
+              {ro
+                ? 'Adaugă primul porumbel pentru a genera arborele genealogic.'
+                : 'Add your first pigeon to generate its pedigree tree.'}
+            </Text>
+            <TouchableOpacity style={styles.emptyBtn} onPress={() => router.push('/(tabs)/pigeons')} activeOpacity={0.8}>
+              <Text style={styles.emptyBtnText}>{ro ? 'Adaugă porumbel' : 'Add pigeon'}</Text>
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
       </View>
     );
   }
@@ -488,6 +500,15 @@ export default function PedigreeStudioScreen() {
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
         <ScreenHeader title={t('pedStTitle')} subtitle={pigeon.ring_series || ''} showBack />
 
+        <TouchableOpacity style={styles.pigeonPicker} onPress={() => setPickerOpen(true)} activeOpacity={0.8}>
+          <Bird color={Colors.royalBlue} size={18} />
+          <View style={styles.pickerTextCol}>
+            <Text style={styles.pickerLabel}>{ro ? 'Porumbel' : 'Pigeon'}</Text>
+            <Text style={styles.pickerValue} numberOfLines={1}>{pigeon.ring_series || '-'}</Text>
+          </View>
+          <ChevronDown color={Colors.royalBlue} size={18} />
+        </TouchableOpacity>
+
         {/* Action toolbar */}
         <View style={styles.toolbar}>
           <TouchableOpacity style={styles.toolBtn} onPress={() => setImportOpen(true)}>
@@ -500,10 +521,18 @@ export default function PedigreeStudioScreen() {
           </TouchableOpacity>
         </View>
 
+        <View style={styles.selectorBlock}>
+          <GenerationSelector
+            label={t('pedStGenerations')}
+            value={generations}
+            onChange={(value) => saveSettings({ ...settings, generations: value })}
+          />
+        </View>
+
         {/* Export toolbar */}
         <View style={styles.exportToolbar}>
-          <TouchableOpacity style={styles.exportBtn} onPress={handleDownload}>
-            <Download color={Colors.white} size={16} />
+          <TouchableOpacity style={styles.exportBtn} onPress={handleDownload} disabled={downloading || !ancestry}>
+            {downloading ? <ActivityIndicator size="small" color={Colors.white} /> : <Download color={Colors.white} size={16} />}
             <Text style={styles.exportBtnText}>{t('pedStDownload')}</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.exportBtnSecondary} onPress={handlePrint}>
@@ -519,6 +548,8 @@ export default function PedigreeStudioScreen() {
             <Text style={styles.exportBtnSecondaryText}>{t('pedStShare')}</Text>
           </TouchableOpacity>
         </View>
+
+        {downloadError && <Text style={styles.errorText}>{t('error')}</Text>}
 
         {shareUrl && (
           <View style={styles.shareLinkBox}>
@@ -560,8 +591,10 @@ export default function PedigreeStudioScreen() {
 
               {/* Pedigree tree */}
               <View style={styles.pedigreeTree}>
-                {ancestry ? renderTreeNode(ancestry, 0) : (
-                  <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginVertical: 40 }} />
+                {ancestry && (
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                    {renderTreeNode(ancestry, 0)}
+                  </ScrollView>
                 )}
               </View>
 
@@ -639,22 +672,6 @@ export default function PedigreeStudioScreen() {
               </View>
             </View>
 
-            {/* Generations */}
-            <View style={styles.setSection}>
-              <Text style={styles.setSectionTitle}>{t('pedStGenerations')}</Text>
-              <View style={styles.gensRow}>
-                {[3, 4, 5, 6, 7, 8].map((g) => (
-                  <TouchableOpacity
-                    key={g}
-                    style={[styles.genBtn, settings.generations === g && styles.genBtnActive]}
-                    onPress={() => saveSettings({ ...settings, generations: g })}
-                  >
-                    <Text style={[styles.genBtnText, settings.generations === g && styles.genBtnTextActive]}>{g}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-
             {/* Toggles */}
             <View style={styles.setSection}>
               <View style={styles.toggleRow}>
@@ -702,6 +719,42 @@ export default function PedigreeStudioScreen() {
             </View>
 
             <View style={{ height: 40 }} />
+          </ScrollView>
+        </View>
+      </Modal>
+
+      {/* Pigeon picker modal */}
+      <Modal visible={pickerOpen} animationType="slide" transparent={false}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>{ro ? 'Alege porumbelul' : 'Choose a pigeon'}</Text>
+            <TouchableOpacity onPress={() => setPickerOpen(false)}>
+              <X color={Colors.text} size={24} />
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={styles.modalScroll} showsVerticalScrollIndicator={false}>
+            {pigeonList.map((p) => {
+              const active = p.id === selectedId;
+              return (
+                <TouchableOpacity
+                  key={p.id}
+                  style={[styles.pickerItem, active && styles.pickerItemActive]}
+                  onPress={() => {
+                    setSelectedId(p.id);
+                    setPickerOpen(false);
+                  }}
+                  activeOpacity={0.8}
+                >
+                  <View style={styles.pickerTextCol}>
+                    <Text style={styles.pickerItemRing}>{p.ring_series || '-'}</Text>
+                    <Text style={styles.pickerItemMeta}>
+                      {p.year || '—'} · {p.color || t('noColor')}
+                    </Text>
+                  </View>
+                  {active && <Check color={Colors.royalBlue} size={18} />}
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
       </Modal>
@@ -892,6 +945,40 @@ const styles = StyleSheet.create({
   emptyNodeText: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.textLight, fontStyle: 'italic' },
   certificateFooter: { alignItems: 'center', marginTop: 20 },
   footerText: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.textLight, marginTop: 8 },
+  pigeonPicker: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderWidth: 1.5,
+    borderColor: Colors.royalBlueLight,
+    marginBottom: 12,
+  },
+  pickerTextCol: { flex: 1, gap: 2 },
+  pickerLabel: { fontFamily: 'Inter-Medium', fontSize: 12, color: Colors.textSecondary },
+  pickerValue: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.text },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: Colors.white,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 8,
+    borderWidth: 1.5,
+    borderColor: Colors.borderLight,
+  },
+  pickerItemActive: { borderColor: Colors.royalBlue, backgroundColor: Colors.royalBluePale },
+  pickerItemRing: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.text },
+  pickerItemMeta: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.textSecondary },
+  emptyBox: { alignItems: 'center', gap: 12, marginTop: 40, paddingHorizontal: 24 },
+  emptyTitle: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.text, textAlign: 'center' },
+  emptyText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
+  emptyBtn: { backgroundColor: Colors.royalBlue, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28, marginTop: 8 },
+  emptyBtnText: { fontFamily: 'Inter-Bold', fontSize: 15, color: Colors.white },
   modalContainer: { flex: 1, backgroundColor: Colors.background },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 24, paddingTop: 50, backgroundColor: Colors.white, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
   modalTitle: { fontFamily: 'Inter-Bold', fontSize: 20, color: Colors.text },
@@ -911,11 +998,8 @@ const styles = StyleSheet.create({
   templateLabel: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.text },
   templateLabelActive: { color: Colors.goldDark },
   templateDesc: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.textSecondary },
-  gensRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap' },
-  genBtn: { width: 44, height: 44, borderRadius: 10, backgroundColor: Colors.white, borderWidth: 1.5, borderColor: Colors.borderLight, justifyContent: 'center', alignItems: 'center' },
-  genBtnActive: { backgroundColor: Colors.royalBlue, borderColor: Colors.royalBlue },
-  genBtnText: { fontFamily: 'Inter-Bold', fontSize: 16, color: Colors.text },
-  genBtnTextActive: { color: Colors.white },
+  selectorBlock: { marginBottom: 16 },
+  errorText: { fontFamily: 'Inter-Regular', fontSize: 13, color: Colors.error, textAlign: 'center', marginBottom: 12 },
   toggleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 },
   toggleLabel: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.text },
   formInput: { fontFamily: 'Inter-Regular', fontSize: 16, backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, color: Colors.text },

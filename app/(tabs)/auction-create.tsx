@@ -16,8 +16,16 @@ import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
 import { ScreenHeader } from '@/components/ScreenHeader';
 import {
-  ChevronRight, Bird, Check, Gavel, X, Mars, Venus, Trophy, Crown,
+  ChevronRight, Bird, Check, Gavel, X, Mars, Venus, Trophy, Crown, Megaphone,
 } from 'lucide-react-native';
+import {
+  fetchPromotionFee,
+  getPromotionText,
+  requestAuctionPromotion,
+} from '@/lib/promotion';
+import { fetchCommissionRates, getCommissionRateForRole, type CommissionRates } from '@/lib/commission';
+import { CommissionSummary } from '@/components/CommissionSummary';
+import { fetchMyCommissionBalance } from '@/lib/commission-wallet';
 
 interface PigeonOption {
   id: string;
@@ -28,16 +36,18 @@ interface PigeonOption {
   year: number | null;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 const DURATION_OPTIONS = [
   { days: 3, key: 'auc3Days' },
+  { days: 5, key: 'auc5Days' },
   { days: 7, key: 'auc7Days' },
-  { days: 14, key: 'auc14Days' },
-  { days: 30, key: 'auc30Days' },
 ] as const;
 
 export default function AuctionCreateScreen() {
-  const { t } = useLanguage();
-  const { profile } = useAuth();
+  const { t, language } = useLanguage();
+  const promoText = getPromotionText(language);
+  const { profile, isAdmin, isAmbassador, commissionRole } = useAuth();
   const router = useRouter();
   const [pigeons, setPigeons] = useState<PigeonOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,6 +59,34 @@ export default function AuctionCreateScreen() {
   const [buyNowPrice, setBuyNowPrice] = useState('');
   const [duration, setDuration] = useState(7);
   const [creating, setCreating] = useState(false);
+  const [promoteListing, setPromoteListing] = useState(false);
+  const [promoFee, setPromoFee] = useState<number | null>(null);
+  const [commissionRates, setCommissionRates] = useState<CommissionRates | null>(null);
+  const [commissionAccepted, setCommissionAccepted] = useState(false);
+  const [walletBalance, setWalletBalance] = useState<number | null>(null);
+  const commissionRate = commissionRates ? getCommissionRateForRole(commissionRole, commissionRates) : null;
+
+  useEffect(() => {
+    fetchPromotionFee().then(setPromoFee).catch(() => setPromoFee(null));
+    fetchCommissionRates().then(setCommissionRates).catch(() => setCommissionRates(null));
+    fetchMyCommissionBalance().then(setWalletBalance).catch(() => setWalletBalance(null));
+  }, []);
+  const promoIsFree = isAdmin || isAmbassador;
+  const startPriceValue = parseInt(startingPrice, 10) || 0;
+  const requiredCommission = commissionRate !== null
+    ? Math.round(startPriceValue * commissionRate) / 100
+    : 0;
+  const walletShortfall = !isAmbassador && walletBalance !== null && walletBalance < requiredCommission;
+  const canPublish = isAmbassador || (commissionRate !== null && commissionAccepted && !walletShortfall);
+
+  const commissionErrorMessage = (message: string) => {
+    if (message.includes('commission_rate_changed')) return t('commRateChanged');
+    if (message.includes('commission_not_accepted')) return t('commNotAccepted');
+    if (message.includes('insufficient_commission_wallet')) {
+      return 'Soldul din portofelul de comisioane nu acoperă comisionul necesar. Alimentează portofelul din Profil.';
+    }
+    return message;
+  };
 
   const loadPigeons = useCallback(async () => {
     const { data } = await supabase
@@ -84,11 +122,15 @@ export default function AuctionCreateScreen() {
       return;
     }
 
-    setCreating(true);
-    const endTime = new Date();
-    endTime.setDate(endTime.getDate() + duration);
+    if (!isAmbassador && (commissionRate === null || !commissionAccepted)) {
+      Alert.alert(t('error'), commissionRate === null ? t('commRateUnavailable') : t('commAcceptRequired'));
+      return;
+    }
 
-    const { error } = await supabase.from('auctions').insert({
+    setCreating(true);
+    const endTime = new Date(Date.now() + duration * DAY_MS);
+
+    const { data: created, error } = await supabase.from('auctions').insert({
       seller_id: profile?.id,
       pigeon_id: selectedPigeon.id,
       title: title.trim(),
@@ -100,11 +142,24 @@ export default function AuctionCreateScreen() {
       status: 'active',
       bid_count: 0,
       buy_now_price: buyNowPrice ? parseInt(buyNowPrice, 10) : null,
-    });
+      commission_rate_accepted: isAmbassador ? null : commissionRate,
+      commission_accepted_at: isAmbassador ? null : new Date().toISOString(),
+    }).select('id').maybeSingle();
+
+    if (!error && created?.id && promoteListing) {
+      try {
+        await requestAuctionPromotion(created.id, true);
+      } catch {
+        setCreating(false);
+        Alert.alert(t('error'), promoText.error);
+        router.replace('/(tabs)/auctions');
+        return;
+      }
+    }
 
     setCreating(false);
     if (error) {
-      Alert.alert(t('error'), error.message);
+      Alert.alert(t('error'), commissionErrorMessage(error.message));
       return;
     }
     Alert.alert(t('aucCreated'), t('aucCreatedMsg'), [
@@ -236,6 +291,33 @@ export default function AuctionCreateScreen() {
           <Text style={styles.buyNowHint}>{t('aucBuyNowHint')}</Text>
         </View>
 
+        {commissionRate === 0 && !isAmbassador && (
+          <View style={styles.launchPromoBox}>
+            <Text style={styles.launchPromoTitle}>Promoție Lansare: 0% comision (Gratuit)</Text>
+            <Text style={styles.launchPromoBody}>
+              Licitația ta nu are comision. Rata de 0% se păstrează până la încheierea licitației, chiar dacă platforma va stabili un comision ulterior.
+            </Text>
+          </View>
+        )}
+
+        {commissionRate !== null || isAmbassador ? (
+          <View style={styles.commissionWrap}>
+            <CommissionSummary
+              rate={commissionRate ?? 0}
+              role={commissionRole}
+              amount={parseInt(startingPrice, 10) || 0}
+            />
+          </View>
+        ) : (
+          <Text style={styles.commissionError}>{t('commRateUnavailable')}</Text>
+        )}
+
+        {walletShortfall && (
+          <Text style={styles.walletWarning}>
+            Soldul din portofel ({walletBalance?.toFixed(2)} lei) nu acoperă comisionul de {requiredCommission.toFixed(2)} lei. Alimentează portofelul din Profil pentru a publica.
+          </Text>
+        )}
+
         <View style={styles.formGroup}>
           <View style={styles.durationRow}>
             {DURATION_OPTIONS.map(opt => (
@@ -250,9 +332,56 @@ export default function AuctionCreateScreen() {
               </TouchableOpacity>
             ))}
           </View>
+          <Text style={styles.durationEndsText}>
+            {t('aucEndsOn')}: {new Date(Date.now() + duration * DAY_MS).toLocaleString(language, { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </Text>
         </View>
 
-        <TouchableOpacity style={styles.createBtn} onPress={handleCreate} disabled={creating}>
+        <View style={styles.promoCard}>
+          <TouchableOpacity
+            style={styles.promoRow}
+            onPress={() => setPromoteListing(v => !v)}
+            activeOpacity={0.8}
+          >
+            <View style={[styles.promoCheck, promoteListing && styles.promoCheckOn]}>
+              {promoteListing && <Megaphone color={Colors.royalBlueDark} size={14} />}
+            </View>
+            <View style={styles.promoTextBox}>
+              <Text style={styles.promoTitle}>{promoText.optionTitle}</Text>
+              <Text style={styles.promoHint}>{promoText.optionHint}</Text>
+            </View>
+            <Text style={styles.promoPrice}>
+              {promoIsFree ? promoText.free : `${promoFee ?? 25} ${promoText.feeSuffix}`}
+            </Text>
+          </TouchableOpacity>
+          {promoteListing && !promoIsFree && (
+            <Text style={styles.promoNote}>{promoText.requested}</Text>
+          )}
+        </View>
+
+        {!isAmbassador && (
+          <TouchableOpacity
+            style={styles.commissionAcceptRow}
+            onPress={() => setCommissionAccepted(v => !v)}
+            activeOpacity={0.8}
+            disabled={commissionRate === null}
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: commissionAccepted }}
+          >
+            <View style={[styles.promoCheck, commissionAccepted && styles.promoCheckOn]}>
+              {commissionAccepted && <Check color={Colors.royalBlueDark} size={14} />}
+            </View>
+            <Text style={styles.commissionAcceptText}>
+              {t('commAcceptLabel').replace('{rate}', String(commissionRate ?? '-'))}
+            </Text>
+          </TouchableOpacity>
+        )}
+
+        <TouchableOpacity
+          style={[styles.createBtn, !canPublish && styles.createBtnDisabled]}
+          onPress={handleCreate}
+          disabled={creating || !canPublish}
+        >
           {creating ? (
             <ActivityIndicator color={Colors.royalBlueDark} />
           ) : (
@@ -325,9 +454,41 @@ const styles = StyleSheet.create({
   durationBtnActive: { borderColor: Colors.royalBlue, backgroundColor: Colors.royalBlue },
   durationBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 13, color: Colors.textSecondary },
   durationBtnTextActive: { color: Colors.white },
+  durationEndsText: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.textSecondary, marginTop: 8 },
+  promoCard: {
+    backgroundColor: Colors.white, borderRadius: BorderRadius.md, padding: 16, gap: 8,
+    borderWidth: 1, borderColor: Colors.gold, marginBottom: 16,
+  },
+  promoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  promoCheck: {
+    width: 24, height: 24, borderRadius: 6, borderWidth: 1.5, borderColor: Colors.gold,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  promoCheckOn: { backgroundColor: Colors.gold },
+  promoTextBox: { flex: 1, gap: 2 },
+  promoTitle: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.text },
+  promoHint: { fontFamily: 'Inter-Regular', fontSize: 12, lineHeight: 18, color: Colors.textSecondary },
+  promoPrice: { fontFamily: 'Inter-Bold', fontSize: 14, color: Colors.royalBlueDark },
+  promoNote: { fontFamily: 'Inter-Regular', fontSize: 12, color: Colors.warning, marginLeft: 36 },
   createBtn: {
     flexDirection: 'row', backgroundColor: Colors.gold, borderRadius: BorderRadius.md,
     paddingVertical: 18, alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 8, ...Shadows.gold,
   },
   createBtnText: { fontFamily: 'Inter-Bold', fontSize: 17, color: Colors.royalBlueDark },
+  createBtnDisabled: { opacity: 0.5 },
+  commissionWrap: { marginBottom: 16 },
+  launchPromoBox: {
+    backgroundColor: Colors.successBg, borderColor: Colors.success, borderWidth: 1,
+    borderRadius: BorderRadius.md, padding: 16, gap: 6, marginBottom: 16,
+  },
+  launchPromoTitle: { fontFamily: 'Inter-Bold', fontSize: 15, color: Colors.text },
+  launchPromoBody: { fontFamily: 'Inter-Regular', fontSize: 13, lineHeight: 19, color: Colors.textSecondary },
+  commissionError: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.error, marginBottom: 16 },
+  walletWarning: { fontFamily: 'Inter-Medium', fontSize: 13, lineHeight: 19, color: Colors.error, marginBottom: 16 },
+  commissionAcceptRow: {
+    flexDirection: 'row', alignItems: 'flex-start', gap: 12, marginTop: 8,
+    backgroundColor: Colors.white, borderRadius: BorderRadius.md, padding: 16,
+    borderWidth: 1, borderColor: Colors.border,
+  },
+  commissionAcceptText: { flex: 1, fontFamily: 'Inter-Medium', fontSize: 14, lineHeight: 20, color: Colors.text },
 });

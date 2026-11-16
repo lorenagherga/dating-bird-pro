@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,128 +6,70 @@ import {
   ScrollView,
   ActivityIndicator,
   TouchableOpacity,
-  Alert,
   SafeAreaView,
   Image,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors } from '@/lib/theme';
 import { PLAN_LIMITS } from '@/lib/types';
-import { ScreenHeader } from '@/components/ScreenHeader';
+import { savePdf } from '@/lib/pdf/pdf-export';
+import { buildPigeonPedigreePdf } from '@/lib/pdf/pdf-pigeon-documents';
+import {
+  loadPedigreeData,
+  buildPedigreeTree,
+  type PalmaresEntry,
+  type PedigreeData,
+  type PedigreeNode,
+} from '@/lib/pedigree/pedigree-tree';
+import { GenerationSelector } from '@/components/GenerationSelector';
 import { ArrowLeft, Download, Crown, Bird, Trophy, Medal, Award } from 'lucide-react-native';
+import { LanguagePicker } from '@/components/LanguagePicker';
 
-interface PigeonRecord {
-  id: string;
-  ring_series: string;
-  year: number | null;
-  sex: string;
-  color: string;
-  status: string;
-  sire_id: string | null;
-  dam_id: string | null;
-  photo_url: string | null;
-  notes: string;
-  is_champion: boolean;
-}
-
-interface PalmaresEntry {
-  id: string;
-  position: number;
-  race_name: string;
-  year: number | null;
-  distance_km: number | null;
-}
+const DEFAULT_GENERATIONS = 4;
 
 export default function PedigreeScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { profile } = useAuth();
   const { t, language } = useLanguage();
-  const [pigeon, setPigeon] = useState<PigeonRecord | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [palmaresMap, setPalmaresMap] = useState<Record<string, PalmaresEntry[]>>({});
+  const ro = language === 'ro';
+  const [data, setData] = useState<PedigreeData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const [generations, setGenerations] = useState(DEFAULT_GENERATIONS);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
 
   const plan = profile?.subscription_plan || 'trial';
   const limits = PLAN_LIMITS[plan];
 
-  const fetchPigeon = async (pid: string): Promise<PigeonRecord | null> => {
-    const { data } = await supabase
-      .from('pigeons')
-      .select('*')
-      .eq('id', pid)
-      .maybeSingle();
-    return data as PigeonRecord | null;
-  };
-
-  const fetchPalmaresForPigeon = async (pid: string): Promise<PalmaresEntry[]> => {
-    const { data } = await supabase
-      .from('pigeon_palmares')
-      .select('id, position, race_name, year, distance_km')
-      .eq('pigeon_id', pid)
-      .order('position', { ascending: true });
-    return (data || []) as PalmaresEntry[];
-  };
-
-  const loadPigeon = useCallback(async () => {
-    if (!id) return;
-    const p = await fetchPigeon(id);
-    setPigeon(p);
-    setLoading(false);
-  }, [id]);
-
   useEffect(() => {
-    loadPigeon();
-  }, [loadPigeon]);
-
-  const buildAncestry = async (p: PigeonRecord | null, generations: number): Promise<any> => {
-    if (!p || generations === 0) return null;
-    const [sire, dam] = await Promise.all([
-      p.sire_id ? fetchPigeon(p.sire_id) : Promise.resolve(null),
-      p.dam_id ? fetchPigeon(p.dam_id) : Promise.resolve(null),
-    ]);
-    return {
-      ...p,
-      sire: await buildAncestry(sire, generations - 1),
-      dam: await buildAncestry(dam, generations - 1),
-    };
-  };
-
-  const loadAllPalmares = async (rootNode: any) => {
-    const ids = new Set<string>();
-    const collect = (node: any) => {
-      if (!node) return;
-      if (node.id) ids.add(node.id);
-      collect(node.sire);
-      collect(node.dam);
-    };
-    collect(rootNode);
-    const map: Record<string, PalmaresEntry[]> = {};
-    await Promise.all(
-      Array.from(ids).map(async (pid) => {
-        const entries = await fetchPalmaresForPigeon(pid);
-        if (entries.length > 0) map[pid] = entries;
+    let cancelled = false;
+    loadPedigreeData()
+      .then((result) => {
+        if (!cancelled) setData(result);
       })
-    );
-    setPalmaresMap(map);
+      .catch((err: Error) => {
+        if (!cancelled) setLoadError(err.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
+
+  const ancestry = useMemo(
+    () => (data && id ? buildPedigreeTree(data, id, generations) : null),
+    [data, id, generations]
+  );
+
+  const retryLoad = () => {
+    setLoadError(null);
+    setReloadKey((key) => key + 1);
   };
 
-  const [ancestry, setAncestry] = useState<any>(null);
-  const [ancestryLoading, setAncestryLoading] = useState(false);
-
-  useEffect(() => {
-    if (pigeon) {
-      setAncestryLoading(true);
-      buildAncestry(pigeon, 8).then((tree) => {
-        setAncestry(tree);
-        loadAllPalmares(tree).finally(() => setAncestryLoading(false));
-      });
-    }
-  }, [pigeon]);
-
-  if (loading) {
+  if (!data && !loadError) {
     return (
       <SafeAreaView style={styles.container}>
         <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 100 }} />
@@ -157,6 +99,24 @@ export default function PedigreeScreen() {
     );
   }
 
+  const handleDownload = async () => {
+    if (!profile?.id || !id) return;
+    setDownloading(true);
+    setDownloadError(null);
+    try {
+      const { doc, fileName } = await buildPigeonPedigreePdf(profile.id, id, generations);
+      await savePdf(doc, fileName);
+    } catch (err) {
+      setDownloadError(
+        err instanceof Error && err.message
+          ? err.message
+          : ro ? 'Descărcarea PDF a eșuat. Încercați din nou.' : 'PDF download failed. Please try again.'
+      );
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   const getMedalColor = (position: number) => {
     if (position === 1) return Colors.gold;
     if (position === 2) return '#C0C0C0';
@@ -164,7 +124,10 @@ export default function PedigreeScreen() {
     return Colors.royalBlue;
   };
 
-  const renderTreeNode = (node: any, gen: number): React.ReactNode => {
+  const palmaresFor = (pigeonId: string): PalmaresEntry[] => data?.palmaresByPigeon.get(pigeonId) ?? [];
+
+  const renderTreeNode = (node: PedigreeNode | null, gen: number): React.ReactNode => {
+    if (gen >= generations) return null;
     if (!node) {
       return (
         <View style={[styles.treeNode, { marginLeft: gen * 8 }]}>
@@ -175,14 +138,11 @@ export default function PedigreeScreen() {
       );
     }
     const isChampion = node.is_champion;
-    const palmares = palmaresMap[node.id] || [];
+    const palmares = palmaresFor(node.id);
     const hasPodium = palmares.some((p) => p.position <= 3);
     const showTrophy = isChampion || hasPodium;
 
-    const GEN_LABELS: Record<number, string> = {
-      1: t('gen1'), 2: t('gen2'), 3: t('gen3'),
-      4: 'Gen 4', 5: 'Gen 5', 6: 'Gen 6', 7: 'Gen 7', 8: 'Gen 8',
-    };
+    const genLabel = gen === 1 ? t('gen1') : gen === 2 ? t('gen2') : gen === 3 ? t('gen3') : `Gen ${gen}`;
 
     return (
       <View style={{ gap: 3 }}>
@@ -236,7 +196,7 @@ export default function PedigreeScreen() {
                   >
                     <Medal color={getMedalColor(p.position)} size={9} />
                     <Text style={[styles.miniMedalText, { color: getMedalColor(p.position) }]}>
-                      {p.position === 1 ? '1' : p.position === 2 ? '2' : p.position === 3 ? '3' : String(p.position)}
+                      {String(p.position)}
                     </Text>
                   </View>
                 ))}
@@ -246,20 +206,21 @@ export default function PedigreeScreen() {
               </View>
             )}
             {gen === 0 && <Text style={styles.rootLabel}>{t('subject')}</Text>}
-            {gen >= 1 && gen <= 8 && <Text style={styles.genLabel}>{GEN_LABELS[gen]}</Text>}
+            {gen >= 1 && <Text style={styles.genLabel}>{genLabel}</Text>}
           </View>
         </View>
-        <View style={{ gap: 3 }}>
-          {renderTreeNode(node.sire, gen + 1)}
-          {renderTreeNode(node.dam, gen + 1)}
-        </View>
+        {gen + 1 < generations && (
+          <View style={{ gap: 3 }}>
+            {renderTreeNode(node.sire, gen + 1)}
+            {renderTreeNode(node.dam, gen + 1)}
+          </View>
+        )}
       </View>
     );
   };
 
-  const renderPalmaresSection = () => {
-    if (!pigeon) return null;
-    const palmares = palmaresMap[pigeon.id] || [];
+  const renderPalmaresSection = (pigeonId: string) => {
+    const palmares = palmaresFor(pigeonId);
     if (palmares.length === 0) return null;
     return (
       <View style={styles.palmaresSection}>
@@ -271,7 +232,7 @@ export default function PedigreeScreen() {
           <View key={p.id} style={[styles.palmaresRow, { borderLeftColor: getMedalColor(p.position) }]}>
             <View style={[styles.palmaresBadge, { backgroundColor: p.position === 1 ? Colors.goldLight : p.position === 2 ? '#F0F0F0' : p.position === 3 ? '#FAEBD7' : Colors.royalBluePale }]}>
               <Text style={[styles.palmaresPosition, { color: getMedalColor(p.position) }]}>
-                {language === 'ro' ? `Locul ${p.position}` : p.position}
+                {ro ? `Locul ${p.position}` : p.position}
               </Text>
             </View>
             <View style={styles.palmaresInfo}>
@@ -286,11 +247,63 @@ export default function PedigreeScreen() {
     );
   };
 
-  const handleDownload = () => {
-    Alert.alert(
-      t('pedigreeDownload'),
-      t('pedigreeDownloadMsg'),
-      [{ text: t('understood') }]
+  const renderBody = () => {
+    if (loadError) {
+      return (
+        <View style={styles.stateBox}>
+          <Text style={styles.errorText}>
+            {ro ? 'Arborele nu a putut fi încărcat.' : 'The pedigree could not be loaded.'}
+          </Text>
+          <TouchableOpacity style={styles.retryBtn} onPress={retryLoad} activeOpacity={0.8}>
+            <Text style={styles.retryBtnText}>{ro ? 'Încearcă din nou' : 'Try again'}</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    if (!ancestry || !id) {
+      return (
+        <View style={styles.stateBox}>
+          <Text style={styles.errorText}>
+            {ro ? 'Porumbelul nu a fost găsit.' : 'This pigeon was not found.'}
+          </Text>
+        </View>
+      );
+    }
+    return (
+      <View style={styles.certificateWrapper}>
+        <View style={styles.certificateBorder}>
+          <View style={styles.certificateInnerBorder}>
+            <View style={styles.certificateHeader}>
+              <View style={styles.certificateGoldLine} />
+              <Text style={styles.certificateTitle}>{t('certificateTitle')}</Text>
+              <Text style={styles.certificateSubtitle}>{t('certificateSub')}</Text>
+              <View style={styles.certificateGoldLine} />
+            </View>
+
+            {ancestry.is_champion && (
+              <View style={styles.championBanner}>
+                <Trophy color={Colors.gold} size={16} />
+                <Text style={styles.championBannerText}>{t('championBanner')}</Text>
+              </View>
+            )}
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              <View style={styles.pedigreeTree}>
+                {renderTreeNode(ancestry, 0)}
+              </View>
+            </ScrollView>
+
+            {renderPalmaresSection(ancestry.id)}
+
+            <View style={styles.certificateFooter}>
+              <View style={styles.certificateGoldLine} />
+              <Text style={styles.footerText}>
+                {t('docGenerated')} · {new Date().toLocaleDateString(ro ? 'ro-RO' : 'en-US')}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
     );
   };
 
@@ -301,48 +314,35 @@ export default function PedigreeScreen() {
           <ArrowLeft color={Colors.royalBlue} size={22} />
         </TouchableOpacity>
         <Text style={styles.topTitle}>{t('pedigreeTitle')}</Text>
-        <TouchableOpacity style={styles.downloadBtn} onPress={handleDownload}>
-          <Download color={Colors.royalBlue} size={20} />
-        </TouchableOpacity>
+        <LanguagePicker />
       </View>
 
       <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-        {ancestryLoading && !ancestry ? (
-          <ActivityIndicator size="large" color={Colors.royalBlue} style={{ marginTop: 40 }} />
-        ) : ancestry ? (
-          <View style={styles.certificateWrapper}>
-            <View style={styles.certificateBorder}>
-              <View style={styles.certificateInnerBorder}>
-                <View style={styles.certificateHeader}>
-                  <View style={styles.certificateGoldLine} />
-                  <Text style={styles.certificateTitle}>{t('certificateTitle')}</Text>
-                  <Text style={styles.certificateSubtitle}>{t('certificateSub')}</Text>
-                  <View style={styles.certificateGoldLine} />
-                </View>
+        <View style={styles.controls}>
+          <GenerationSelector
+            label={ro ? 'Generații afișate' : 'Generations shown'}
+            value={generations}
+            onChange={setGenerations}
+          />
+          <TouchableOpacity
+            style={[styles.downloadBtn, downloading && styles.downloadBtnDisabled]}
+            onPress={handleDownload}
+            disabled={downloading || !ancestry}
+            activeOpacity={0.8}
+          >
+            {downloading ? (
+              <ActivityIndicator color={Colors.white} size="small" />
+            ) : (
+              <Download color={Colors.white} size={18} />
+            )}
+            <Text style={styles.downloadBtnText}>
+              {ro ? `Descarcă PDF (${generations} generații)` : `Download PDF (${generations} generations)`}
+            </Text>
+          </TouchableOpacity>
+          {downloadError && <Text style={styles.errorText}>{downloadError}</Text>}
+        </View>
 
-                {pigeon?.is_champion && (
-                  <View style={styles.championBanner}>
-                    <Trophy color={Colors.gold} size={16} />
-                    <Text style={styles.championBannerText}>{t('championBanner')}</Text>
-                  </View>
-                )}
-
-                <View style={styles.pedigreeTree}>
-                  {renderTreeNode(ancestry, 0)}
-                </View>
-
-                {renderPalmaresSection()}
-
-                <View style={styles.certificateFooter}>
-                  <View style={styles.certificateGoldLine} />
-                  <Text style={styles.footerText}>
-                    {t('docGenerated')} · {new Date().toLocaleDateString(language === 'ro' ? 'ro-RO' : 'en-US')}
-                  </Text>
-                </View>
-              </View>
-            </View>
-          </View>
-        ) : null}
+        {renderBody()}
         <View style={{ height: 40 }} />
       </ScrollView>
     </SafeAreaView>
@@ -364,8 +364,30 @@ const styles = StyleSheet.create({
   },
   backBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   topTitle: { fontFamily: 'Inter-Bold', fontSize: 18, color: Colors.text },
-  downloadBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center' },
   scrollContent: { padding: 16, paddingBottom: 40 },
+  controls: { gap: 16, marginBottom: 16 },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    minHeight: 48,
+    borderRadius: 12,
+    backgroundColor: Colors.royalBlue,
+    paddingHorizontal: 16,
+  },
+  downloadBtnDisabled: { opacity: 0.6 },
+  downloadBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.white },
+  errorText: { fontFamily: 'Inter-Regular', fontSize: 14, color: Colors.error, textAlign: 'center' },
+  stateBox: { alignItems: 'center', gap: 16, marginTop: 40 },
+  retryBtn: {
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: Colors.royalBlue,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+  },
+  retryBtnText: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.royalBlue },
   certificateWrapper: {
     backgroundColor: Colors.cream,
     borderRadius: 16,
@@ -425,6 +447,7 @@ const styles = StyleSheet.create({
   pedigreeTree: { gap: 3 },
   treeNode: { gap: 3 },
   nodeBox: {
+    minWidth: 240,
     backgroundColor: Colors.white,
     borderRadius: 10,
     padding: 10,

@@ -10,20 +10,15 @@ import {
   SafeAreaView,
   Alert,
 } from 'react-native';
+import { LanguagePicker } from '@/components/LanguagePicker';
+import { PigeonCategoryPicker } from '@/components/PigeonCategoryPicker';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
-import { Colors, Shadows, BorderRadius } from '@/lib/theme';
+import { Colors, Shadows } from '@/lib/theme';
 import type { PigeonCategory } from '@/lib/types';
-import { Bird, Trophy, Sparkles, Check, ArrowRight, Zap, Award, Crown } from 'lucide-react-native';
+import { Bird, ArrowRight } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-
-interface CategoryOption {
-  key: PigeonCategory;
-  titleKey: string;
-  descKey: string;
-  icon: typeof Trophy;
-}
 
 export default function OnboardingScreen() {
   const { setPigeonCategories } = useAuth();
@@ -31,13 +26,6 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<PigeonCategory>>(new Set());
   const [saving, setSaving] = useState(false);
-
-  const options: CategoryOption[] = [
-    { key: 'racing_speed', titleKey: 'onbSpeed', descKey: 'onbSpeedDesc', icon: Zap },
-    { key: 'racing_endurance', titleKey: 'onbEndurance', descKey: 'onbEnduranceDesc', icon: Trophy },
-    { key: 'fancy_exhibition', titleKey: 'onbExhibition', descKey: 'onbExhibitionDesc', icon: Crown },
-    { key: 'fancy_flying', titleKey: 'onbFlying', descKey: 'onbFlyingDesc', icon: Sparkles },
-  ];
 
   const toggleCategory = (key: PigeonCategory) => {
     setSelected((prev) => {
@@ -57,8 +45,7 @@ export default function OnboardingScreen() {
       return;
     }
     setSaving(true);
-    const categories = Array.from(selected);
-    await setPigeonCategories(categories);
+    await setPigeonCategories(Array.from(selected));
     setSaving(false);
     router.replace('/(tabs)');
   };
@@ -72,51 +59,25 @@ export default function OnboardingScreen() {
     >
       <SafeAreaView style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <View style={styles.topRow}>
+            <LanguagePicker />
+          </View>
           <View style={styles.header}>
             <View style={styles.logoCircle}>
               <Bird color={Colors.white} size={32} />
             </View>
-            <Text style={styles.welcomeText}>{t('onbWelcome').split('\n').map((line, i) => <Text key={i}>{i > 0 && '\n'}{line}</Text>)}</Text>
             <Text style={styles.title}>{t('onbTitle')}</Text>
             <Text style={styles.subtitle}>{t('onbSubtitle')}</Text>
           </View>
 
           <View style={styles.optionsContainer}>
-            {options.map((option) => {
-              const isSelected = selected.has(option.key);
-              const Icon = option.icon;
-              return (
-                <TouchableOpacity
-                  key={option.key}
-                  style={[styles.optionCard, isSelected && styles.optionCardSelected]}
-                  onPress={() => toggleCategory(option.key)}
-                  activeOpacity={0.75}
-                >
-                  <View style={styles.optionHeader}>
-                    <View style={[styles.optionIconBox, isSelected && styles.optionIconBoxSelected]}>
-                      <Icon
-                        color={isSelected ? Colors.white : Colors.goldLight}
-                        size={26}
-                      />
-                    </View>
-                    <View style={styles.optionTextContainer}>
-                      <Text style={styles.optionTitle}>{t(option.titleKey as any)}</Text>
-                      <Text style={styles.optionDescription}>{t(option.descKey as any)}</Text>
-                    </View>
-                    <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
-                      {isSelected && <Check color={Colors.white} size={16} />}
-                    </View>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
+            <PigeonCategoryPicker selected={selected} onToggle={toggleCategory} variant="onDark" />
           </View>
 
-          {/* Personalization preview */}
           {selected.size > 0 && (
             <View style={styles.previewBox}>
               <Text style={styles.previewTitle}>{t('onbModRaces')}</Text>
-              {(selected.has('racing_speed') || selected.has('racing_endurance')) && (
+              {selected.has('voiajori') && (
                 <>
                   <View style={styles.previewRow}>
                     <View style={styles.previewDot} />
@@ -128,13 +89,13 @@ export default function OnboardingScreen() {
                   </View>
                 </>
               )}
-              {selected.has('fancy_exhibition') && (
+              {selected.has('frumusete') && (
                 <View style={styles.previewRow}>
                   <View style={styles.previewDot} />
                   <Text style={styles.previewText}>{t('onbModStandards')} — {t('onbModStandardsSub')}</Text>
                 </View>
               )}
-              {selected.has('fancy_flying') && (
+              {selected.has('joc_zbor') && (
                 <View style={styles.previewRow}>
                   <View style={styles.previewDot} />
                   <Text style={styles.previewText}>{t('onbModBeauty')} — {t('onbModBeautySub')}</Text>
@@ -144,7 +105,7 @@ export default function OnboardingScreen() {
           )}
 
           <TouchableOpacity
-            style={[styles.confirmButton, selected.size === 0 && styles.confirmButtonDisabled, saving && styles.confirmButtonDisabled]}
+            style={[styles.confirmButton, (selected.size === 0 || saving) && styles.confirmButtonDisabled]}
             onPress={handleConfirm}
             disabled={selected.size === 0 || saving}
             activeOpacity={0.8}
@@ -169,6 +130,7 @@ export default function OnboardingScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   scrollContent: { padding: 24, paddingBottom: 40 },
+  topRow: { flexDirection: 'row', justifyContent: 'flex-end', paddingHorizontal: 24 },
   header: { alignItems: 'center', marginTop: Platform.OS === 'web' ? 20 : 40, marginBottom: 32 },
   logoCircle: {
     width: 72,
@@ -180,14 +142,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
-  },
-  welcomeText: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 18,
-    color: Colors.goldLight,
-    textAlign: 'center',
-    marginBottom: 10,
-    fontStyle: 'italic',
   },
   title: {
     fontFamily: 'Inter-Bold',
@@ -204,53 +158,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 20,
   },
-  optionsContainer: { gap: 14, marginBottom: 20 },
-  optionCard: {
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    borderRadius: BorderRadius.lg,
-    padding: 20,
-    borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.15)',
-  },
-  optionCardSelected: {
-    borderColor: Colors.gold,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-  },
-  optionHeader: { flexDirection: 'row', alignItems: 'center', gap: 14 },
-  optionIconBox: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  optionIconBoxSelected: { backgroundColor: Colors.gold },
-  optionTextContainer: { flex: 1 },
-  optionTitle: {
-    fontFamily: 'Inter-Bold',
-    fontSize: 16,
-    color: Colors.white,
-    marginBottom: 2,
-  },
-  optionDescription: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.6)',
-  },
-  checkbox: {
-    width: 26,
-    height: 26,
-    borderRadius: 7,
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.3)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  checkboxSelected: {
-    borderColor: Colors.gold,
-    backgroundColor: Colors.gold,
-  },
+  optionsContainer: { marginBottom: 20 },
   previewBox: {
     backgroundColor: 'rgba(255,255,255,0.08)',
     borderRadius: 14,

@@ -1,37 +1,36 @@
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Alert, Switch } from 'react-native';
+import { LanguagePicker } from '@/components/LanguagePicker';
+import { AnnouncementBanner } from '@/components/AnnouncementBanner';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { Colors, Shadows, BorderRadius } from '@/lib/theme';
-import { PLAN_LABELS, PLAN_LIMITS } from '@/lib/types';
+import { PLAN_LABELS } from '@/lib/types';
 import {
   Bird,
   Calendar,
   Stethoscope,
-  Calculator,
-  GitBranch,
+  Bot,
   Crown,
   LogOut,
-  Sparkles,
   AlertTriangle,
   ShieldCheck,
-  Trophy,
-  Award,
-  Zap,
+  ChevronRight,
 } from 'lucide-react-native';
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/lib/supabase';
+import { PigeonSilhouette } from '@/components/PigeonSilhouette';
+import { TreatmentDueAlerts } from '@/components/TreatmentDueAlerts';
 
-interface ModuleCard {
-  title: string;
-  subtitle: string;
-  icon: React.ReactNode;
-  route: string;
-  locked?: boolean;
-}
+const QUICK_ACTIONS = [
+  { route: '/(tabs)/pigeons', icon: Bird, labelRo: 'Registrul porumbeilor', labelEn: 'Pigeon registry' },
+  { route: '/(tabs)/nests', icon: Calendar, labelRo: 'Calendarul cuibului', labelEn: 'Nest calendar' },
+  { route: '/(tabs)/doctor', icon: Stethoscope, labelRo: 'Întreabă doctorul', labelEn: 'Ask the doctor' },
+  { route: '/(tabs)/assistant', icon: Bot, labelRo: 'Asistent AI', labelEn: 'AI assistant' },
+];
 
 export default function DashboardScreen() {
-  const { profile, signOut, isAdmin, isVip, effectivePlan, pigeonCategories } = useAuth();
+  const { profile, signOut, isAdmin, isVip, effectivePlan } = useAuth();
   const { t, language } = useLanguage();
   const router = useRouter();
   const [pigeonCount, setPigeonCount] = useState(0);
@@ -119,88 +118,6 @@ export default function DashboardScreen() {
   };
 
   const plan = effectivePlan;
-  const limits = PLAN_LIMITS[plan];
-
-  const hasRacing = pigeonCategories?.some(c => c.startsWith('racing_')) ?? false;
-  const hasFancy = pigeonCategories?.some(c => c.startsWith('fancy_')) ?? false;
-  // Default: show all modules if no categories selected yet
-  const showAll = !pigeonCategories || pigeonCategories.length === 0;
-
-  const handleNavigate = (route: string, locked?: boolean) => {
-    if (locked) {
-      Alert.alert(
-        t('premiumFeature'),
-        t('premiumMsg'),
-        [
-          { text: t('seePlans'), onPress: () => router.push('/(tabs)/profile') },
-          { text: t('close') },
-        ]
-      );
-      return;
-    }
-    router.push(route as any);
-  };
-
-  const modules: ModuleCard[] = [
-    // Registry — always shown
-    {
-      title: t('modRegistry'),
-      subtitle: t('modRegistrySub'),
-      icon: <Bird color={Colors.white} size={26} strokeWidth={1.8} />,
-      route: '/(tabs)/pigeons',
-    },
-    // Pedigree — always shown
-    {
-      title: t('modPedigree'),
-      subtitle: t('modPedigreeSub'),
-      icon: <GitBranch color={Colors.white} size={26} strokeWidth={1.8} />,
-      route: '/(tabs)/pigeons',
-      locked: !limits.hasPedigree,
-    },
-    // Races & Training — only for racing categories
-    ...(showAll || hasRacing ? [{
-      title: t('onbModRaces'),
-      subtitle: t('onbModRacesSub'),
-      icon: <Trophy color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
-      route: '/(tabs)/races',
-    }] : []),
-    // FCI Calculator — only for racing categories
-    ...(showAll || hasRacing ? [{
-      title: t('onbModFci'),
-      subtitle: t('onbModFciSub'),
-      icon: <Zap color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
-      route: '/(tabs)/palmares',
-    }] : []),
-    // Standards & Judging — only for fancy exhibition
-    ...(showAll || pigeonCategories?.includes('fancy_exhibition') ? [{
-      title: t('onbModStandards'),
-      subtitle: t('onbModStandardsSub'),
-      icon: <Award color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
-      route: '/(tabs)/vitrina',
-    }] : []),
-    // Flying & Performance — only for fancy flying
-    ...(showAll || pigeonCategories?.includes('fancy_flying') ? [{
-      title: t('onbModBeauty'),
-      subtitle: t('onbModBeautySub'),
-      icon: <Sparkles color={Colors.white} size={26} strokeWidth={1.8} /> as React.ReactNode,
-      route: '/(tabs)/vitrina',
-    }] : []),
-    // Calendar (Nests) — always shown
-    {
-      title: t('modCalendar'),
-      subtitle: t('modCalendarSub'),
-      icon: <Calendar color={Colors.white} size={26} strokeWidth={1.8} />,
-      route: '/(tabs)/nests',
-    },
-    // Genetic Calculator — always shown (locked by plan)
-    {
-      title: t('modCalculator'),
-      subtitle: t('modCalculatorSub'),
-      icon: <Calculator color={Colors.white} size={26} strokeWidth={1.8} />,
-      route: '/(tabs)/calculator',
-      locked: !limits.hasGeneticCalculator,
-    },
-  ];
 
   const handleSignOut = () => {
     Alert.alert(t('signOut'), t('signOutConfirm'), [
@@ -211,17 +128,24 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.container}>
+      <PigeonSilhouette width={220} style={{ position: 'absolute', top: 110, right: -50 }} />
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+        <AnnouncementBanner />
         <View style={styles.header}>
           <View>
             <Text style={styles.appName}>{t('appName')}</Text>
             <Text style={styles.taglineText}>{t('tagline')}</Text>
             <Text style={styles.welcomeText}>{profile?.breeder_name || t('breeder')}</Text>
           </View>
-          <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
-            <LogOut color={Colors.royalBlue} size={20} strokeWidth={1.8} />
-          </TouchableOpacity>
+          <View style={styles.headerActions}>
+            <LanguagePicker />
+            <TouchableOpacity style={styles.signOutButton} onPress={handleSignOut}>
+              <LogOut color={Colors.white} size={20} strokeWidth={1.8} />
+            </TouchableOpacity>
+          </View>
         </View>
+
+        <TreatmentDueAlerts />
 
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
@@ -246,19 +170,28 @@ export default function DashboardScreen() {
           )}
         </View>
 
-          <TouchableOpacity
-            style={styles.assistantHero}
-            onPress={() => router.push('/(tabs)/doctor')}
-            activeOpacity={0.9}
-          >
-            <View style={styles.assistantHeroIcon}>
-              <Stethoscope color={Colors.white} size={28} strokeWidth={1.8} />
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.assistantHeroTitle}>{t('doctorTitle')}</Text>
-              <Text style={styles.assistantHeroSub}>{t('doctorSub')}</Text>
-            </View>
-          </TouchableOpacity>
+        <View style={styles.quickSection}>
+          <Text style={styles.quickTitle}>{language === 'ro' ? 'Acțiuni rapide' : 'Quick actions'}</Text>
+          <View style={styles.quickCard}>
+            {QUICK_ACTIONS.map((action, index) => {
+              const Icon = action.icon;
+              return (
+                <TouchableOpacity
+                  key={action.route}
+                  style={[styles.quickRow, index < QUICK_ACTIONS.length - 1 && styles.quickRowBorder]}
+                  onPress={() => router.push(action.route as any)}
+                  activeOpacity={0.6}
+                >
+                  <View style={styles.quickIcon}>
+                    <Icon color={Colors.royalBlue} size={20} />
+                  </View>
+                  <Text style={styles.quickLabel}>{language === 'ro' ? action.labelRo : action.labelEn}</Text>
+                  <ChevronRight color={Colors.textLight} size={20} />
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
 
         {/* Swallow Monitor — Regula Rândunicii */}
         <View style={styles.swallowCard}>
@@ -325,35 +258,6 @@ export default function DashboardScreen() {
           )}
         </View>
 
-        <View style={styles.modulesGrid}>
-          {modules.map((mod, idx) => (
-            <TouchableOpacity
-              key={idx}
-              style={[styles.moduleCard, mod.locked && styles.moduleCardLocked]}
-              onPress={() => handleNavigate(mod.route, mod.locked)}
-              activeOpacity={0.85}
-            >
-              <View style={styles.moduleIcon}>
-                {mod.icon}
-                {mod.locked && (
-                  <View style={styles.lockBadge}>
-                    <Crown color={Colors.white} size={12} />
-                  </View>
-                )}
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.moduleTitle}>{mod.title}</Text>
-                <Text style={styles.moduleSubtitle}>{mod.subtitle}</Text>
-              </View>
-              {mod.locked ? (
-                <View style={styles.lockIconBox}>
-                  <Crown color={Colors.gold} size={18} strokeWidth={1.5} />
-                </View>
-              ) : null}
-            </TouchableOpacity>
-          ))}
-        </View>
-
         {plan === 'trial' && (
           <TouchableOpacity
             style={styles.upgradeBanner}
@@ -383,40 +287,44 @@ const styles = StyleSheet.create({
     padding: 24,
     paddingBottom: 40,
   },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     marginBottom: 28,
     marginTop: 40,
+    backgroundColor: Colors.royalBlue,
+    borderRadius: BorderRadius.xl,
+    padding: 20,
   },
   appName: {
     fontFamily: 'Inter-Bold',
     fontSize: 26,
-    color: Colors.royalBlue,
+    color: Colors.white,
     letterSpacing: -0.5,
   },
   taglineText: {
     fontFamily: 'Inter-SemiBold',
     fontSize: 15,
-    color: Colors.gold,
+    color: Colors.goldLight,
     marginTop: 4,
   },
   welcomeText: {
     fontFamily: 'Inter-Regular',
     fontSize: 14,
-    color: Colors.textSecondary,
+    color: Colors.royalBluePale,
     marginTop: 2,
   },
   signOutButton: {
     width: 44,
     height: 44,
     borderRadius: 14,
-    backgroundColor: Colors.royalBluePale,
+    backgroundColor: 'rgba(255,255,255,0.14)',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: Colors.borderLight,
+    borderColor: 'rgba(255,255,255,0.25)',
   },
   statsRow: {
     flexDirection: 'row',
@@ -449,93 +357,35 @@ const styles = StyleSheet.create({
     color: Colors.textSecondary,
     marginTop: 4,
   },
-  assistantHero: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    backgroundColor: Colors.royalBlueDark,
-    borderRadius: 20,
-    padding: 22,
-    marginBottom: 20,
-    borderWidth: 1.5,
-    borderColor: Colors.gold,
-    ...Shadows.gold,
-  },
-  assistantHeroIcon: {
-    width: 56,
-    height: 56,
-    borderRadius: 16,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  assistantHeroTitle: {
+  quickSection: { marginBottom: 20 },
+  quickTitle: {
     fontFamily: 'Inter-Bold',
-    fontSize: 19,
-    color: Colors.white,
-  },
-  assistantHeroSub: {
-    fontFamily: 'Inter-Regular',
     fontSize: 13,
-    color: 'rgba(255,255,255,0.75)',
-    marginTop: 2,
+    color: Colors.textSecondary,
+    marginBottom: 10,
+    marginLeft: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
   },
-  modulesGrid: {
-    gap: 14,
+  quickCard: {
+    backgroundColor: Colors.white,
+    borderRadius: BorderRadius.lg,
+    borderWidth: 1,
+    borderColor: Colors.borderLight,
+    overflow: 'hidden',
+    ...Shadows.card,
   },
-  moduleCard: {
-    backgroundColor: Colors.royalBlue,
-    borderRadius: 18,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
-    minHeight: 80,
-    ...Shadows.button,
-  },
-  moduleCardLocked: {
-    backgroundColor: Colors.neutral700,
-  },
-  moduleIcon: {
-    width: 52,
-    height: 52,
-    borderRadius: 14,
-    backgroundColor: 'rgba(255,255,255,0.14)',
+  quickRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 16, gap: 14 },
+  quickRowBorder: { borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
+  quickIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: Colors.royalBluePale,
     justifyContent: 'center',
     alignItems: 'center',
   },
-  moduleTitle: {
-    fontFamily: 'Inter-SemiBold',
-    fontSize: 17,
-    color: Colors.white,
-  },
-  moduleSubtitle: {
-    fontFamily: 'Inter-Regular',
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
-    marginTop: 2,
-  },
-  lockBadge: {
-    position: 'absolute',
-    top: -4,
-    right: -4,
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: Colors.gold,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 2,
-    borderColor: Colors.royalBlue,
-  },
-  lockIconBox: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    backgroundColor: 'rgba(255,255,255,0.1)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+  quickLabel: { flex: 1, fontFamily: 'Inter-SemiBold', fontSize: 15, color: Colors.text },
   upgradeBanner: {
     flexDirection: 'row',
     alignItems: 'center',

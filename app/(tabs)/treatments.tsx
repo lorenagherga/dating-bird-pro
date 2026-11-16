@@ -22,12 +22,27 @@ import { useRouter } from 'expo-router';
 interface TreatmentRecord {
   id: string;
   pigeon_ring: string;
+  category: string;
   disease: string;
   symptoms: string;
   treatment: string;
   admin_date: string | null;
   booster_date: string | null;
 }
+
+const TREATMENT_CATEGORIES = [
+  { value: 'vaccination', label: 'Vaccinare' },
+  { value: 'deworming', label: 'Deparazitare' },
+  { value: 'treatment', label: 'Tratament' },
+  { value: 'other', label: 'Altele' },
+];
+
+const HEALTH_PRESETS = [
+  { category: 'vaccination', disease: 'Paramixoviroză' },
+  { category: 'vaccination', disease: 'Variolă' },
+  { category: 'treatment', disease: 'Salmoneloză' },
+  { category: 'deworming', disease: 'Deparazitare' },
+];
 
 function formatDate(dateStr: string | null, language: string = 'ro'): string {
   if (!dateStr) return '—';
@@ -55,6 +70,7 @@ export default function TreatmentsScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [editingTreatment, setEditingTreatment] = useState<TreatmentRecord | null>(null);
   const [form, setForm] = useState({
+    category: 'treatment',
     pigeon_ring: '',
     disease: '',
     symptoms: '',
@@ -113,6 +129,7 @@ export default function TreatmentsScreen() {
   const openAddModal = () => {
     setEditingTreatment(null);
     setForm({
+      category: 'treatment',
       pigeon_ring: '',
       disease: '',
       symptoms: '',
@@ -126,6 +143,7 @@ export default function TreatmentsScreen() {
   const openEditModal = (treatment: TreatmentRecord) => {
     setEditingTreatment(treatment);
     setForm({
+      category: treatment.category,
       pigeon_ring: treatment.pigeon_ring,
       disease: treatment.disease,
       symptoms: treatment.symptoms,
@@ -142,8 +160,21 @@ export default function TreatmentsScreen() {
       return;
     }
     setSaving(true);
+    const ringValue = form.pigeon_ring.trim();
+    const { data: pigeon, error: pigeonError } = await supabase
+      .from('pigeons')
+      .select('id')
+      .eq('ring_series', ringValue)
+      .maybeSingle();
+    if (pigeonError) {
+      setSaving(false);
+      Alert.alert(t('error'), pigeonError.message);
+      return;
+    }
     const payload = {
-      pigeon_ring: form.pigeon_ring.trim(),
+      category: form.category,
+      pigeon_id: pigeon?.id ?? null,
+      pigeon_ring: ringValue,
       disease: form.disease.trim(),
       symptoms: form.symptoms.trim(),
       treatment: form.treatment.trim(),
@@ -270,6 +301,39 @@ export default function TreatmentsScreen() {
                 placeholder="RO-2024-001"
                 placeholderTextColor={Colors.textLight}
               />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Tip</Text>
+              <View style={styles.chipRow}>
+                {TREATMENT_CATEGORIES.map((option) => {
+                  const active = form.category === option.value;
+                  return (
+                    <TouchableOpacity
+                      key={option.value}
+                      style={[styles.chip, active && styles.chipActive]}
+                      onPress={() => setForm({ ...form, category: option.value })}
+                    >
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>{option.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Boli frecvente</Text>
+              <View style={styles.chipRow}>
+                {HEALTH_PRESETS.map((preset) => (
+                  <TouchableOpacity
+                    key={preset.disease}
+                    style={styles.chip}
+                    onPress={() => setForm({ ...form, category: preset.category, disease: preset.disease })}
+                  >
+                    <Text style={styles.chipText}>{preset.disease}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
             </View>
 
             <View style={styles.formGroup}>
@@ -447,6 +511,18 @@ const styles = StyleSheet.create({
   },
   dateLabel: { fontFamily: 'Inter-Regular', fontSize: 11, color: Colors.textSecondary },
   dateVal: { fontFamily: 'Inter-SemiBold', fontSize: 14, color: Colors.text, marginTop: 2 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    backgroundColor: Colors.white,
+  },
+  chipActive: { backgroundColor: Colors.royalBlue, borderColor: Colors.royalBlue },
+  chipText: { fontFamily: 'Inter-Medium', fontSize: 13, color: Colors.text },
+  chipTextActive: { color: Colors.white },
   // Modal
   modalContainer: { flex: 1, backgroundColor: Colors.background },
   modalHeader: {

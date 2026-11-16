@@ -17,8 +17,10 @@ import { useAuth } from '@/lib/auth-context';
 import { useLanguage } from '@/lib/language-context';
 import { supabase, SUPABASE_URL } from '@/lib/supabase';
 import { Colors } from '@/lib/theme';
-import { PLAN_LIMITS, GAME_STYLE_OPTIONS, GameStyle } from '@/lib/types';
+import { PLAN_LIMITS, GAME_STYLE_OPTIONS, GAME_STYLE_LABELS, GameStyle } from '@/lib/types';
 import { ScreenHeader } from '@/components/ScreenHeader';
+import { BreedPicker } from '@/components/BreedPicker';
+import { PigeonFlightSessions } from '@/components/PigeonFlightSessions';
 import { Plus, Camera, Image as ImageIcon, Trash2, Pencil, X, Bird, Crown, GitBranch, ChevronDown, Trophy, Award, Download, Wifi, Dna } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
@@ -38,6 +40,7 @@ interface PigeonRecord {
   photo_url: string | null;
   notes: string;
   game_style: GameStyle | null;
+  breed: string | null;
   is_champion: boolean;
 }
 
@@ -61,6 +64,7 @@ export default function PigeonsScreen() {
     dam_external_color: '',
     notes: '',
     game_style: '' as string,
+    breed: '',
     is_champion: false,
   });
   const [sireMode, setSireMode] = useState<'registry' | 'external'>('registry');
@@ -82,14 +86,14 @@ export default function PigeonsScreen() {
   const limits = PLAN_LIMITS[plan];
 
   const gameStyleLabel = (style: GameStyle): string => {
-    const labels: Record<GameStyle, string> = {
+    const labels: Partial<Record<GameStyle, string>> = {
       short: t('gsShort'),
       medium: t('gsMedium'),
       long: t('gsLong'),
       faller: t('gsFaller'),
       none: t('gsNone'),
     };
-    return labels[style];
+    return labels[style] ?? GAME_STYLE_LABELS[style];
   };
 
   const loadPigeons = useCallback(async () => {
@@ -133,6 +137,7 @@ export default function PigeonsScreen() {
       dam_external_color: '',
       notes: '',
       game_style: '',
+      breed: '',
       is_champion: false,
     });
     setSireMode('registry');
@@ -156,6 +161,7 @@ export default function PigeonsScreen() {
       dam_external_color: pigeon.dam_external_color || '',
       notes: pigeon.notes,
       game_style: pigeon.game_style || '',
+      breed: pigeon.breed || '',
       is_champion: pigeon.is_champion || false,
     });
     setSireMode(pigeon.sire_external_color ? 'external' : 'registry');
@@ -289,6 +295,7 @@ export default function PigeonsScreen() {
       photo_url: photoUrl,
       notes: form.notes.trim(),
       game_style: form.game_style || null,
+      breed: form.breed.trim() || null,
       is_champion: form.is_champion,
     };
 
@@ -373,6 +380,7 @@ export default function PigeonsScreen() {
 
   const renderPigeon = ({ item }: { item: PigeonRecord }) => (
     <View style={styles.pigeonCard}>
+      <View style={styles.pigeonTop}>
       <View style={styles.pigeonPhoto}>
         {item.photo_url ? (
           <Image source={{ uri: item.photo_url }} style={styles.photo} />
@@ -399,6 +407,7 @@ export default function PigeonsScreen() {
             <Text style={styles.championText}>{t('champion')}</Text>
           </View>
         )}
+      </View>
       </View>
       <View style={styles.pigeonActions}>
         <TouchableOpacity style={styles.iconBtnGold} onPress={() => openFedModal(item)}>
@@ -530,6 +539,11 @@ export default function PigeonsScreen() {
                 placeholder={t('colorPlaceholder')}
                 placeholderTextColor={Colors.textLight}
               />
+            </View>
+
+            <View style={styles.formGroup}>
+              <Text style={styles.formLabel}>Rasa</Text>
+              <BreedPicker value={form.breed} onChange={(breed) => setForm({ ...form, breed })} />
             </View>
 
             <View style={styles.formGroup}>
@@ -723,6 +737,8 @@ export default function PigeonsScreen() {
               />
             </View>
 
+            {editingPigeon && <PigeonFlightSessions pigeonId={editingPigeon.id} />}
+
             <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
               {saving ? (
                 <ActivityIndicator color={Colors.white} />
@@ -894,18 +910,21 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   pigeonCard: {
-    flexDirection: 'row',
     backgroundColor: Colors.white,
     borderRadius: 16,
     padding: 14,
-    alignItems: 'center',
-    gap: 14,
+    gap: 12,
     borderWidth: 1,
     borderColor: Colors.borderLight,
   },
+  pigeonTop: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 14,
+  },
   pigeonPhoto: {
-    width: 60,
-    height: 60,
+    width: 64,
+    height: 64,
     borderRadius: 12,
     backgroundColor: Colors.neutral100,
     justifyContent: 'center',
@@ -927,7 +946,14 @@ const styles = StyleSheet.create({
   statusSold: { backgroundColor: Colors.warningBg },
   statusLost: { backgroundColor: Colors.errorBg },
   statusText: { fontFamily: 'Inter-Medium', fontSize: 11, color: Colors.textSecondary },
-  pigeonActions: { flexDirection: 'row', gap: 8 },
+  pigeonActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.borderLight,
+  },
   iconBtn: {
     width: 36,
     height: 36,

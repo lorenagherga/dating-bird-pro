@@ -8,7 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useFrameworkReady } from '@/hooks/useFrameworkReady';
 import { AuthProvider } from '@/lib/auth-context';
 import { LanguageProvider } from '@/lib/language-context';
-import { LanguagePicker } from '@/components/LanguagePicker';
+import { FreeLaunchBanner } from '@/components/FreeLaunchBanner';
 import { useFonts } from 'expo-font';
 import {
   Inter_400Regular,
@@ -44,16 +44,18 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <LanguageProvider>
-            <Stack screenOptions={{ headerShown: false }}>
+            <View style={{ flex: 1 }}>
+              <FreeLaunchBanner />
+              <Stack screenOptions={{ headerShown: false }}>
               <Stack.Screen name="index" />
               <Stack.Screen name="login" />
               <Stack.Screen name="register" />
               <Stack.Screen name="onboarding" />
+              <Stack.Screen name="privacy" />
+              <Stack.Screen name="terms" />
               <Stack.Screen name="(tabs)" />
               <Stack.Screen name="+not-found" />
-            </Stack>
-            <View style={{ position: 'absolute', top: 50, right: 16, zIndex: 999 }}>
-              <LanguagePicker />
+              </Stack>
             </View>
             <StatusBar style="auto" />
           </LanguageProvider>
