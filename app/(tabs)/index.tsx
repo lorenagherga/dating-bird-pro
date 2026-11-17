@@ -25,8 +25,7 @@ import { TreatmentDueAlerts } from '@/components/TreatmentDueAlerts';
 const QUICK_ACTIONS = [
   { route: '/(tabs)/pigeons', icon: Bird, labelRo: 'Registrul porumbeilor', labelEn: 'Pigeon registry' },
   { route: '/(tabs)/nests', icon: Calendar, labelRo: 'Calendarul cuibului', labelEn: 'Nest calendar' },
-  { route: '/(tabs)/doctor', icon: Stethoscope, labelRo: 'Întreabă doctorul', labelEn: 'Ask the doctor' },
-  { route: '/(tabs)/assistant', icon: Bot, labelRo: 'Asistent AI', labelEn: 'AI assistant' },
+  { route: '/(tabs)/assistant', icon: Bot, labelRo: 'Asistent AI', labelEn: 'Assistant AI' },
 ];
 
 export default function DashboardScreen() {
