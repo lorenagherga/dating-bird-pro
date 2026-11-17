@@ -1,9 +1,3 @@
-[[redirects]]
-from = "/.well-known/assetlinks.json"
-to = "/assetlinks.json"
-status = 200
-force = true
-
 [[headers]]
 for = "/.well-known/assetlinks.json"
 
