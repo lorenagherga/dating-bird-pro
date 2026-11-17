@@ -85,7 +85,8 @@ const styles = StyleSheet.create({
   },
   title: {
     fontFamily: 'Inter-Bold',
-    fontSize: 26,
+    fontSize: 19,
+    lineHeight: 24,
     color: Colors.white,
     letterSpacing: -0.5,
   },
