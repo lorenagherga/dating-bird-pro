@@ -46,9 +46,9 @@ export default function TabLayout() {
           backgroundColor: Colors.white,
           borderTopColor: Colors.borderLight,
           borderTopWidth: 1,
-          paddingBottom: (insets.bottom > 0 ? insets.bottom : 10) + 52,
+          paddingBottom: (insets.bottom > 0 ? insets.bottom : 10) + 6,
           paddingTop: 8,
-          height: 124 + (insets.bottom > 0 ? insets.bottom : 10),
+          height: 72 + (insets.bottom > 0 ? insets.bottom : 10),
         },
         tabBarLabelStyle: {
           fontFamily: 'Inter-SemiBold',
